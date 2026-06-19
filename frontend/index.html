@@ -526,25 +526,24 @@ function renderMessages(msgs) {
 
 function appendMessage(data) {
   const el = $('chatMessages');
-  // 移除空状态
   const empty = el.querySelector('.empty-state');
   if (empty) empty.remove();
+  if (data.is_agent) removeTypingIndicator(data.sender_name);
   
   const isSelf = data.sender_id === S.user?.id;
   const rowClass = isSelf ? 'self' : 'agent';
   const avatar = data.is_agent ? (data.agent_avatar || '🤖') : '😀';
   const tag = data.is_agent ? '<span class="msg-agent-tag">AI</span>' : '';
   
+  let bubble = '';
+  if (data.msg_type === 'voice' && data.voice_url) {
+    bubble = `<div class="voice-msg" onclick="playVoice('${data.voice_url}',this)"><span class="voice-icon">🔊</span><div class="voice-wave"><span></span><span></span><span></span><span></span><span></span></div><span class="voice-dur">语音</span></div>`;
+  } else {
+    bubble = escHtml(data.content);
+  }
+  
   const div = document.createElement('div');
-  div.innerHTML = `
-    <div class="msg-row ${rowClass}">
-      <div class="msg-avatar">${avatar}</div>
-      <div>
-        <div class="msg-sender">${tag}${escHtml(data.sender_name)}</div>
-        <div class="msg-bubble">${escHtml(data.content)}</div>
-        <div class="msg-time">${formatTime(data.created_at)}</div>
-      </div>
-    </div>`;
+  div.innerHTML = `<div class="msg-row ${rowClass}"><div class="msg-avatar">${avatar}</div><div><div class="msg-sender">${tag}${escHtml(data.sender_name)}</div><div class="msg-bubble">${bubble}</div><div class="msg-time">${formatTime(data.created_at)}</div></div></div>`;
   el.appendChild(div.firstElementChild);
   el.scrollTop = el.scrollHeight;
 }
@@ -596,6 +595,74 @@ function handleKey(e) {
   }, 0);
 }
 
+// ==================== 语音消息 ====================
+let mediaRecorder = null, audioChunks = [], isVoiceMode = false;
+
+function toggleVoiceMode() {
+  isVoiceMode = !isVoiceMode;
+  $('chatInput').style.display = isVoiceMode ? 'none' : 'block';
+  $('voiceRecordBtn').style.display = isVoiceMode ? 'block' : 'none';
+  $('voiceModeBtn').style.color = isVoiceMode ? 'var(--primary)' : '';
+}
+
+async function startRecord() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+    audioChunks = [];
+    mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+    mediaRecorder.start();
+    $('voiceRecordBtn').classList.add('recording');
+    $('voiceRecordBtn').textContent = '⏹';
+  } catch(e) { alert('需要麦克风权限'); }
+}
+
+async function stopRecord() {
+  if (!mediaRecorder || mediaRecorder.state !== 'recording') return;
+  $('voiceRecordBtn').classList.remove('recording');
+  $('voiceRecordBtn').textContent = '🎤';
+  mediaRecorder.stop();
+  mediaRecorder.stream.getTracks().forEach(t => t.stop());
+  mediaRecorder.onstop = async () => {
+    const blob = new Blob(audioChunks, { type: 'audio/webm' });
+    const form = new FormData();
+    form.append('file', blob, 'voice.webm');
+    try {
+      const resp = await fetch('/api/voice/upload', { method:'POST', headers:{'Authorization':'Bearer '+S.token}, body:form });
+      const data = await resp.json();
+      await api('/api/messages', { method:'POST', body:JSON.stringify({ group_id:S.currentGroup, content:'[语音消息]', msg_type:'voice', voice_url:data.url }) });
+      appendMessage({ id:Date.now(), sender_id:S.user.id, sender_name:S.user.nickname, content:'[语音消息]', msg_type:'voice', voice_url:data.url, is_agent:false, created_at:Date.now()/1000 });
+    } catch(e) { console.error('语音发送失败',e); }
+  };
+}
+
+function playVoice(url, el) {
+  const audio = new Audio(url);
+  el.classList.add('voice-playing');
+  audio.play();
+  audio.onended = () => el.classList.remove('voice-playing');
+}
+
+// ==================== 表情 ====================
+const EMOJIS = ['😀','😂','🤣','😊','😍','🥰','😘','😋','🤔','😅','😢','😭','😡','🥺','😴','🙏','👍','👎','❤️','💔','🎉','🎊','💪','👏','🤝','✌️','💐','🌹','🎂','🍰','🍜','🍲','🎣','♟️','📰','💊'];
+function toggleEmoji() {
+  const p = $('emojiPanel');
+  if (!p.innerHTML) p.innerHTML = EMOJIS.map(e=>`<span class="emoji-item" onclick="insertEmoji('${e}')">${e}</span>`).join('');
+  p.classList.toggle('show');
+}
+function insertEmoji(e) { $('chatInput').value += e; $('chatInput').focus(); }
+
+// ==================== 打字提示 ====================
+function showTypingIndicator(name) {
+  const el = $('chatMessages');
+  const d = document.createElement('div');
+  d.id = 'typing-'+name;
+  d.innerHTML = `<div class="msg-row agent"><div class="msg-avatar">🤖</div><div><div class="msg-sender">${name}</div><div class="msg-bubble"><div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div></div></div></div>`;
+  el.appendChild(d.firstElementChild);
+  el.scrollTop = el.scrollHeight;
+}
+function removeTypingIndicator(name) { const e=document.getElementById('typing-'+name); if(e)e.remove(); }
+
 // ==================== WebSocket ====================
 function connectWS() {
   if (!S.token) return;
@@ -616,11 +683,12 @@ function connectWS() {
     try {
       const msg = JSON.parse(e.data);
       if (msg.type === 'message' && msg.data) {
-        // 只显示当前群的消息
-        if (msg.data.group_id === S.currentGroup) {
+        if (msg.data.is_agent && msg.data.group_id === S.currentGroup) {
+          showTypingIndicator(msg.data.sender_name);
+          setTimeout(() => appendMessage(msg.data), 1500);
+        } else if (msg.data.group_id === S.currentGroup) {
           appendMessage(msg.data);
         }
-        // 更新群列表的最后消息
         updateGroupPreview(msg.data.group_id, msg.data.content, msg.data.created_at);
       }
     } catch (err) {}

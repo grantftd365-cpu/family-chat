@@ -404,9 +404,16 @@ async def _trigger_agent_replies(group_id: str, sender_id: str, sender_name: str
             msg_id = gen_id()
             ts = now()
             
+            # 生成 Agent 语音（30% 概率发语音）
+            voice_url = None
+            if random.random() < 0.3 and len(reply["content"]) > 5:
+                voice_url = await _generate_agent_voice(agent_id, reply["content"])
+            
+            msg_type = "voice" if voice_url else reply["msg_type"]
+            
             await db.execute(
                 "INSERT INTO messages (id, group_id, sender_id, sender_name, content, msg_type, is_agent, created_at) VALUES (?,?,?,?,?,?,?,?)",
-                (msg_id, group_id, agent_id, reply["agent_name"], reply["content"], reply["msg_type"], 1, ts)
+                (msg_id, group_id, agent_id, reply["agent_name"], reply["content"], msg_type, 1, ts)
             )
             await db.commit()
             
@@ -416,9 +423,10 @@ async def _trigger_agent_replies(group_id: str, sender_id: str, sender_name: str
                 "data": {
                     "id": msg_id, "group_id": group_id,
                     "sender_id": agent_id, "sender_name": reply["agent_name"],
-                    "content": reply["content"], "msg_type": reply["msg_type"],
+                    "content": reply["content"], "msg_type": msg_type,
                     "is_agent": True, "created_at": ts,
                     "agent_avatar": reply.get("agent_avatar", "🤖"),
+                    "voice_url": voice_url,
                 }
             }
             await ws_manager.broadcast_to_group(group_id, msg_data)
@@ -504,20 +512,118 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query("")):
 
 # ==================== 语音 API ====================
 
+# Agent 语音映射
+AGENT_VOICES = {
+    "agent_dad": "zh-CN-YunxiNeural",      # 男声-稳重
+    "agent_mom": "zh-CN-XiaoxiaoNeural",    # 女声-温柔
+    "agent_grandma": "zh-CN-XiaoyiNeural",  # 女声-年长
+}
+DEFAULT_VOICE = "zh-CN-XiaoxiaoNeural"
+
+
 @app.post("/api/tts")
-async def text_to_speech(text: str, user=Depends(get_current_user)):
+async def text_to_speech(text: str, voice: str = "", user=Depends(get_current_user)):
     """文字转语音"""
     try:
         import edge_tts
-        import tempfile
         
+        voice_name = voice or DEFAULT_VOICE
         output_path = f"data/voices/{gen_id()}.mp3"
-        communicate = edge_tts.Communicate(text, "zh-CN-XiaoxiaoNeural")
+        communicate = edge_tts.Communicate(text, voice_name)
         await communicate.save(output_path)
         
         return FileResponse(output_path, media_type="audio/mpeg")
     except Exception as e:
         raise HTTPException(500, f"语音合成失败: {e}")
+
+
+@app.post("/api/voice/upload")
+async def upload_voice(file: UploadFile = File(...), user=Depends(get_current_user)):
+    """上传语音消息"""
+    file_id = gen_id()
+    ext = Path(file.filename).suffix or ".webm"
+    filepath = f"data/voices/{file_id}{ext}"
+    
+    content = await file.read()
+    with open(filepath, "wb") as f:
+        f.write(content)
+    
+    return {"id": file_id, "url": f"/api/voice/{file_id}{ext}"}
+
+
+@app.get("/api/voice/{filename}")
+async def get_voice(filename: str):
+    """获取语音文件"""
+    filepath = f"data/voices/{filename}"
+    if not Path(filepath).exists():
+        raise HTTPException(404, "语音文件不存在")
+    return FileResponse(filepath, media_type="audio/mpeg")
+
+
+async def _generate_agent_voice(agent_id: str, text: str) -> Optional[str]:
+    """为 Agent 生成语音，返回文件路径"""
+    try:
+        import edge_tts
+        
+        voice = AGENT_VOICES.get(agent_id, DEFAULT_VOICE)
+        filename = f"{gen_id()}.mp3"
+        filepath = f"data/voices/{filename}"
+        
+        communicate = edge_tts.Communicate(text, voice)
+        await communicate.save(filepath)
+        
+        return f"/api/voice/{filename}"
+    except Exception as e:
+        logger.error(f"Agent 语音生成失败: {e}")
+        return None
+
+
+# ==================== 记忆 API ====================
+
+@app.get("/api/memories/search")
+async def search_memories(q: str, agent_id: str = "", user=Depends(get_current_user)):
+    """搜索 Agent 记忆"""
+    db = await get_db()
+    try:
+        results = []
+        if agent_id:
+            async with db.execute(
+                "SELECT id, agent_id, content, importance, memory_type, created_at FROM agent_memories WHERE agent_id=? AND content LIKE ? ORDER BY importance DESC LIMIT 20",
+                (agent_id, f"%{q}%")
+            ) as cursor:
+                async for row in cursor:
+                    results.append({
+                        "id": row[0], "agent_id": row[1], "content": row[2],
+                        "importance": row[3], "type": row[4], "created_at": row[5],
+                    })
+        else:
+            async with db.execute(
+                "SELECT id, agent_id, content, importance, memory_type, created_at FROM agent_memories WHERE content LIKE ? ORDER BY importance DESC LIMIT 20",
+                (f"%{q}%",)
+            ) as cursor:
+                async for row in cursor:
+                    results.append({
+                        "id": row[0], "agent_id": row[1], "content": row[2],
+                        "importance": row[3], "type": row[4], "created_at": row[5],
+                    })
+        return results
+    finally:
+        await db.close()
+
+
+@app.post("/api/memories")
+async def add_memory(agent_id: str, content: str, importance: float = 0.7, user=Depends(get_current_user)):
+    """手动添加 Agent 记忆"""
+    db = await get_db()
+    try:
+        await db.execute(
+            "INSERT INTO agent_memories (id, agent_id, content, importance, memory_type, metadata, created_at) VALUES (?,?,?,?,?,?,?)",
+            (gen_id(), agent_id, content, importance, "long", "{}", now())
+        )
+        await db.commit()
+        return {"status": "ok"}
+    finally:
+        await db.close()
 
 
 # ==================== 系统 API ====================
@@ -529,4 +635,18 @@ async def system_status():
         "agents": len(agent_manager.agents) if agent_manager else 0,
         "online": ws_manager.get_online_count(),
         "version": "1.0.0",
+    }
+
+
+@app.get("/api/voices")
+async def list_voices():
+    """列出可用语音"""
+    return {
+        "voices": [
+            {"id": "zh-CN-XiaoxiaoNeural", "name": "晓晓", "gender": "female", "desc": "温柔女声"},
+            {"id": "zh-CN-YunxiNeural", "name": "云希", "gender": "male", "desc": "稳重男声"},
+            {"id": "zh-CN-XiaoyiNeural", "name": "晓艺", "gender": "female", "desc": "年长女声"},
+            {"id": "zh-CN-YunjianNeural", "name": "云健", "gender": "male", "desc": "活力男声"},
+            {"id": "zh-CN-XiaochenNeural", "name": "晓辰", "gender": "female", "desc": "甜美女声"},
+        ]
     }
