@@ -155,9 +155,10 @@ a { color:var(--primary); text-decoration:none; }
     <div class="login-form">
       <div id="loginError" class="login-error"></div>
       <div id="regNameGroup" style="display:none">
-        <input id="regNickname" placeholder="你的昵称" autocomplete="off">
+        <input id="regNickname" placeholder="你的昵称（如：小明）" autocomplete="off">
+        <input id="regRole" placeholder="家庭角色（如：儿子/女儿/爸爸）" autocomplete="off">
       </div>
-      <input id="loginUser" placeholder="用户名" autocomplete="username">
+      <input id="loginEmail" type="email" placeholder="邮箱" autocomplete="email">
       <input id="loginPass" type="password" placeholder="密码" autocomplete="current-password">
       <button class="login-btn" onclick="doLogin()">登录</button>
       <div class="login-switch" onclick="toggleReg()">没有账号？<b>注册</b></div>
@@ -324,15 +325,18 @@ function toggleReg() {
 }
 
 async function doLogin() {
-  const user = $('loginUser').value.trim();
+  const email = $('loginEmail').value.trim();
   const pass = $('loginPass').value.trim();
   const nick = $('regNickname')?.value.trim();
-  if (!user || !pass) return showLoginError('请填写用户名和密码');
+  const role = $('regRole')?.value.trim();
+  if (!email || !pass) return showLoginError('请填写邮箱和密码');
   if (S.isReg && !nick) return showLoginError('请填写昵称');
 
   try {
     const ep = S.isReg ? '/api/register' : '/api/login';
-    const body = S.isReg ? { username: user, password: pass, nickname: nick } : { username: user, password: pass };
+    const body = S.isReg
+      ? { email, username: email.split('@')[0], password: pass, nickname: nick, role_in_family: role }
+      : { email, password: pass };
     const data = await api(ep, { method: 'POST', body: JSON.stringify(body) });
     S.token = data.token;
     S.user = data.user;

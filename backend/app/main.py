@@ -151,12 +151,15 @@ async def ensure_defaults(db, agent_mgr: AgentManager):
 # ==================== Pydantic 模型 ====================
 
 class RegisterReq(BaseModel):
+    email: str
     username: str
     password: str
     nickname: str
+    avatar: str = "😀"
+    role_in_family: str = ""  # 爸爸/妈妈/儿子/女儿等
 
 class LoginReq(BaseModel):
-    username: str
+    email: str
     password: str
 
 class CreateGroupReq(BaseModel):
@@ -195,42 +198,92 @@ async def index():
 
 @app.post("/api/register")
 async def register(req: RegisterReq):
+    """注册 - 同时创建用户和对应 Agent"""
     db = await get_db()
     try:
+        # 检查邮箱
+        async with db.execute("SELECT id FROM users WHERE email=?", (req.email,)) as c:
+            if await c.fetchone():
+                raise HTTPException(400, "该邮箱已注册")
+        
         # 检查用户名
         async with db.execute("SELECT id FROM users WHERE username=?", (req.username,)) as c:
             if await c.fetchone():
                 raise HTTPException(400, "用户名已存在")
         
         user_id = gen_id()
+        ts = now()
+        
+        # 创建用户
         await db.execute(
-            "INSERT INTO users (id, username, nickname, password_hash, created_at, updated_at) VALUES (?,?,?,?,?,?)",
-            (user_id, req.username, req.nickname, hash_password(req.password), now(), now())
+            """INSERT INTO users (id, email, username, nickname, password_hash, avatar, role, created_at, updated_at) 
+               VALUES (?,?,?,?,?,?,?,?,?)""",
+            (user_id, req.email, req.username, req.nickname,
+             hash_password(req.password), req.avatar, "member", ts, ts)
         )
+        
+        # 自动创建对应的 Agent（数字人分身）
+        agent_id = f"agent_{user_id}"
+        agent_config = {
+            "id": agent_id,
+            "user_id": user_id,
+            "name": req.nickname,
+            "avatar": req.avatar,
+            "role_in_family": req.role_in_family,
+            "backstory": f"{req.nickname}的数字分身",
+            "speaking_style": "待炼化 - 通过聊天记录或语音训练",
+            "traits": [],
+            "interests": [],
+            "catchphrases": [],
+        }
+        await agent_manager.create_agent(agent_config)
+        
+        # 更新用户的 agent_id
+        await db.execute("UPDATE users SET agent_id=? WHERE id=?", (agent_id, user_id))
+        
         # 加入默认群
         await db.execute(
             "INSERT OR IGNORE INTO group_members (group_id, user_id, role, joined_at) VALUES (?,?,?,?)",
-            ("family_default", user_id, "member", now())
+            ("family_default", user_id, "member", ts)
+        )
+        # Agent 也加入默认群
+        await db.execute(
+            "INSERT OR IGNORE INTO group_members (group_id, user_id, role, joined_at) VALUES (?,?,?,?)",
+            ("family_default", agent_id, "agent", ts)
         )
         await db.commit()
         
-        token = create_token(user_id, req.username)
-        return {"token": token, "user": {"id": user_id, "username": req.username, "nickname": req.nickname}}
+        token = create_token(user_id, req.email)
+        logger.info(f"新用户注册: {req.nickname} ({req.email}) → Agent: {agent_id}")
+        
+        return {
+            "token": token,
+            "user": {"id": user_id, "email": req.email, "username": req.username, "nickname": req.nickname},
+            "agent": {"id": agent_id, "name": req.nickname, "status": "created"},
+        }
     finally:
         await db.close()
 
 
 @app.post("/api/login")
 async def login(req: LoginReq):
+    """邮箱登录"""
     db = await get_db()
     try:
-        async with db.execute("SELECT id, nickname, password_hash FROM users WHERE username=?", (req.username,)) as c:
+        async with db.execute("SELECT id, username, nickname, avatar, agent_id, password_hash FROM users WHERE email=?", (req.email,)) as c:
             row = await c.fetchone()
-            if not row or not verify_password(req.password, row[2]):
-                raise HTTPException(401, "用户名或密码错误")
+            if not row or not verify_password(req.password, row[5]):
+                raise HTTPException(401, "邮箱或密码错误")
         
-        token = create_token(row[0], req.username)
-        return {"token": token, "user": {"id": row[0], "username": req.username, "nickname": row[1]}}
+        token = create_token(row[0], req.email)
+        return {
+            "token": token,
+            "user": {
+                "id": row[0], "email": req.email,
+                "username": row[1], "nickname": row[2],
+                "avatar": row[3] or "😀", "agent_id": row[4] or "",
+            }
+        }
     finally:
         await db.close()
 
