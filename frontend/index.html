@@ -230,8 +230,14 @@ a { color:var(--primary); text-decoration:none; }
       </div>
     </div>
     <div class="chat-messages" id="chatMessages"></div>
+    <div class="emoji-panel" id="emojiPanel"></div>
     <div class="chat-input-area">
+      <button class="input-mode-btn" onclick="toggleEmoji()" title="表情">😊</button>
+      <button class="input-mode-btn" onclick="$('imageInput').click()" title="图片">📷</button>
+      <input type="file" id="imageInput" accept="image/*" style="display:none" onchange="uploadImage(this)">
+      <button class="input-mode-btn" id="voiceModeBtn" onclick="toggleVoiceMode()" title="语音">🎤</button>
       <textarea class="chat-input" id="chatInput" placeholder="输入消息..." rows="1" onkeydown="handleKey(event)"></textarea>
+      <button class="voice-record-btn" id="voiceRecordBtn" style="display:none" onmousedown="startRecord()" onmouseup="stopRecord()" ontouchstart="startRecord()" ontouchend="stopRecord()">🎤</button>
       <button class="chat-send-btn" id="sendBtn" onclick="sendMessage()">发送</button>
     </div>
   </div>
@@ -539,6 +545,9 @@ function appendMessage(data) {
   let bubble = '';
   if (data.msg_type === 'voice' && data.voice_url) {
     bubble = `<div class="voice-msg" onclick="playVoice('${data.voice_url}',this)"><span class="voice-icon">🔊</span><div class="voice-wave"><span></span><span></span><span></span><span></span><span></span></div><span class="voice-dur">语音</span></div>`;
+  } else if (data.msg_type === 'image') {
+    const imgUrl = data.content.startsWith('/') ? data.content : data.content;
+    bubble = `<img src="${imgUrl}" style="max-width:200px;max-height:200px;border-radius:6px;cursor:pointer" onclick="window.open(this.src)" onerror="this.style.display='none'">`;
   } else {
     bubble = escHtml(data.content);
   }
@@ -659,6 +668,47 @@ function toggleEmoji() {
   p.classList.toggle('show');
 }
 function insertEmoji(e) { $('chatInput').value += e; $('chatInput').focus(); }
+
+// ==================== 图片上传 ====================
+async function uploadImage(input) {
+  const file = input.files[0];
+  if (!file || !S.currentGroup) return;
+  
+  const form = new FormData();
+  form.append('file', file);
+  
+  try {
+    const resp = await fetch('/api/upload/image', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + S.token },
+      body: form,
+    });
+    const data = await resp.json();
+    
+    await api('/api/messages', {
+      method: 'POST',
+      body: JSON.stringify({
+        group_id: S.currentGroup,
+        content: data.url,
+        msg_type: 'image',
+      }),
+    });
+    
+    appendMessage({
+      id: Date.now(),
+      sender_id: S.user.id,
+      sender_name: S.user.nickname,
+      content: data.url,
+      msg_type: 'image',
+      is_agent: false,
+      created_at: Date.now() / 1000,
+    });
+  } catch (e) {
+    showToast('图片上传失败', 'error');
+  }
+  
+  input.value = '';
+}
 
 // ==================== 打字提示 ====================
 function showTypingIndicator(name) {

@@ -405,12 +405,27 @@ class AgentManager:
             for a in self.agents.values()
         ]
 
-    async def handle_group_message(self, group_id: str, sender_id: str, sender_name: str, content: str) -> list[dict]:
+    async def handle_group_message(self, group_id: str, sender_id: str, sender_name: str, content: str, msg_type: str = "text") -> list[dict]:
         """处理群消息，返回 Agent 回复列表"""
         replies = []
+        
+        # 图片/语音消息转为文字描述
+        if msg_type == "image":
+            content = f"[{sender_name} 发了一张图片]"
+        elif msg_type == "voice":
+            content = f"[{sender_name} 发了一条语音消息]"
 
         for agent_id, agent in self.agents.items():
-            is_mentioned = agent.personality.name in content
+            # @检测：支持 @名字、@Agent、直接提名字
+            name = agent.personality.name
+            is_mentioned = (
+                f"@{name}" in content or
+                f"@{name} " in content or
+                content.startswith(f"@{name}") or
+                name in content or
+                ("@所有人" in content) or
+                ("@all" in content.lower())
+            )
             reply_text = await agent.think(content, sender_name, is_mentioned)
 
             if reply_text:

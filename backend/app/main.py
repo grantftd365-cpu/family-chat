@@ -391,18 +391,18 @@ async def send_message(req: SendMessageReq, user=Depends(get_current_user)):
         await ws_manager.broadcast_to_group(req.group_id, msg_data, exclude_user=user["user_id"])
 
         # 触发 Agent 回复（异步，独立连接）
-        asyncio.create_task(_trigger_agent_replies(req.group_id, user["user_id"], nickname, req.content))
+        asyncio.create_task(_trigger_agent_replies(req.group_id, user["user_id"], nickname, req.content, req.msg_type))
 
         return {"id": msg_id, "created_at": ts}
     finally:
         await db.close()
 
 
-async def _trigger_agent_replies(group_id: str, sender_id: str, sender_name: str, content: str):
+async def _trigger_agent_replies(group_id: str, sender_id: str, sender_name: str, content: str, msg_type: str = "text"):
     """触发 Agent 回复"""
     db = await get_db()
     try:
-        replies = await agent_manager.handle_group_message(group_id, sender_id, sender_name, content)
+        replies = await agent_manager.handle_group_message(group_id, sender_id, sender_name, content, msg_type)
         
         for reply in replies:
             agent_id = reply["agent_id"]
@@ -655,5 +655,356 @@ async def list_voices():
             {"id": "zh-CN-XiaoyiNeural", "name": "晓艺", "gender": "female", "desc": "年长女声"},
             {"id": "zh-CN-YunjianNeural", "name": "云健", "gender": "male", "desc": "活力男声"},
             {"id": "zh-CN-XiaochenNeural", "name": "晓辰", "gender": "female", "desc": "甜美女声"},
+        ]
+    }
+
+
+# ==================== 图片/文件上传 ====================
+
+@app.post("/api/upload/image")
+async def upload_image(file: UploadFile = File(...), user=Depends(get_current_user)):
+    """上传图片"""
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(400, "只能上传图片文件")
+    
+    file_id = gen_id()
+    ext = Path(file.filename).suffix or ".jpg"
+    filepath = f"data/uploads/{file_id}{ext}"
+    
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:  # 10MB 限制
+        raise HTTPException(400, "图片大小不能超过 10MB")
+    
+    with open(filepath, "wb") as f:
+        f.write(content)
+    
+    url = f"/api/uploads/{file_id}{ext}"
+    return {"id": file_id, "url": url, "filename": file.filename}
+
+
+@app.get("/api/uploads/{filename}")
+async def get_upload(filename: str):
+    """获取上传的文件"""
+    filepath = f"data/uploads/{filename}"
+    if not Path(filepath).exists():
+        raise HTTPException(404, "文件不存在")
+    
+    # 根据扩展名设置 content-type
+    ext = Path(filename).suffix.lower()
+    media_types = {
+        ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+        ".png": "image/png", ".gif": "image/gif",
+        ".webp": "image/webp", ".mp4": "video/mp4",
+        ".webm": "audio/webm", ".mp3": "audio/mpeg",
+    }
+    return FileResponse(filepath, media_type=media_types.get(ext, "application/octet-stream"))
+
+
+# ==================== 炼化系统 (Agent 性格训练) ====================
+
+class RefineTextReq(BaseModel):
+    agent_id: str
+    text: str  # 真人的聊天记录、自我介绍、性格描述等
+    source: str = "text"  # text / chat_history / intro
+
+
+class RefineVoiceReq(BaseModel):
+    agent_id: str
+    voice_url: str  # 上传的语音文件URL
+    description: str = ""  # 语音说明
+
+
+@app.post("/api/agent/refine/text")
+async def refine_agent_text(req: RefineTextReq, user=Depends(get_current_user)):
+    """炼化Agent - 通过文本分析性格"""
+    agent = agent_manager.get_agent(req.agent_id)
+    if not agent:
+        raise HTTPException(404, "Agent 不存在")
+    
+    # 用 LLM 分析文本，提取性格特征
+    analysis_prompt = f"""分析以下文本，提取说话人的性格特征、说话风格、兴趣爱好、口头禅。
+
+文本来源: {req.source}
+文本内容:
+{req.text}
+
+请以 JSON 格式输出：
+{{
+  "traits": ["性格特征1", "性格特征2", ...],
+  "speaking_style": "说话风格描述",
+  "interests": ["兴趣1", "兴趣2", ...],
+  "catchphrases": ["口头禅1", "口头禅2", ...],
+  "backstory_update": "根据文本推断的背景信息",
+  "personality_summary": "性格总结（一段话）"
+}}"""
+    
+    try:
+        result = await agent._call_llm(
+            "你是一个专业的性格分析专家，从文本中提取人物特征。",
+            analysis_prompt
+        )
+        
+        # 解析结果
+        import json as json_mod
+        clean = result.strip()
+        if clean.startswith("```"):
+            clean = clean.split("\n", 1)[1]
+            clean = clean.rsplit("```", 1)[0]
+        
+        traits_data = json_mod.loads(clean)
+        
+        # 更新 Agent 性格
+        p = agent.personality
+        if traits_data.get("traits"):
+            p.traits = list(set(p.traits + traits_data["traits"]))
+        if traits_data.get("speaking_style"):
+            p.speaking_style = traits_data["speaking_style"]
+        if traits_data.get("interests"):
+            p.interests = list(set(p.interests + traits_data["interests"]))
+        if traits_data.get("catchphrases"):
+            p.catchphrases = list(set(p.catchphrases + traits_data["catchphrases"]))
+        if traits_data.get("backstory_update"):
+            p.backstory += "\n" + traits_data["backstory_update"]
+        
+        # 存入记忆
+        await agent.memory.add_long_term(
+            f"[炼化-文本] 来源: {req.source}\n{req.text[:500]}",
+            importance=0.9,
+            metadata={"type": "refinement", "source": "text"}
+        )
+        
+        # 更新数据库
+        db = await get_db()
+        await db.execute(
+            "UPDATE agents SET traits=?, speaking_style=?, interests=?, catchphrases=?, backstory=? WHERE id=?",
+            (json_mod.dumps(p.traits, ensure_ascii=False),
+             p.speaking_style,
+             json_mod.dumps(p.interests, ensure_ascii=False),
+             json_mod.dumps(p.catchphrases, ensure_ascii=False),
+             p.backstory,
+             req.agent_id)
+        )
+        await db.commit()
+        await db.close()
+        
+        return {
+            "status": "ok",
+            "message": f"炼化完成！提取了 {len(traits_data.get('traits', []))} 个性格特征",
+            "traits": traits_data,
+        }
+        
+    except json_mod.JSONDecodeError:
+        # LLM 输出不是 JSON，直接记录原文
+        await agent.memory.add_long_term(
+            f"[炼化-文本分析] {result[:1000]}",
+            importance=0.8,
+            metadata={"type": "refinement", "source": "text"}
+        )
+        return {"status": "ok", "message": "炼化数据已记录（格式待优化）", "raw": result[:500]}
+    except Exception as e:
+        logger.error(f"炼化失败: {e}")
+        raise HTTPException(500, f"炼化失败: {e}")
+
+
+@app.post("/api/agent/refine/voice")
+async def refine_agent_voice(req: RefineVoiceReq, user=Depends(get_current_user)):
+    """炼化Agent - 通过语音分析（记录语音特征）"""
+    agent = agent_manager.get_agent(req.agent_id)
+    if not agent:
+        raise HTTPException(404, "Agent 不存在")
+    
+    # 记录语音样本
+    await agent.memory.add_long_term(
+        f"[炼化-语音] 语音样本: {req.voice_url} | 说明: {req.description}",
+        importance=0.9,
+        metadata={"type": "refinement", "source": "voice", "voice_url": req.voice_url}
+    )
+    
+    # 更新 Agent 的语音配置
+    db = await get_db()
+    await db.execute(
+        "UPDATE agents SET voice_config=? WHERE id=?",
+        (json.dumps({"speaker_wav": req.voice_url, "description": req.description}, ensure_ascii=False), req.agent_id)
+    )
+    await db.commit()
+    await db.close()
+    
+    return {"status": "ok", "message": "语音样本已记录，数字人将使用相似的声音"}
+
+
+@app.post("/api/agent/refine/chat")
+async def refine_agent_chat(req: RefineTextReq, user=Depends(get_current_user)):
+    """炼化Agent - 通过聊天记录批量分析"""
+    agent = agent_manager.get_agent(req.agent_id)
+    if not agent:
+        raise HTTPException(404, "Agent 不存在")
+    
+    # 分段分析长文本
+    text = req.text
+    chunks = [text[i:i+2000] for i in range(0, len(text), 2000)]
+    
+    all_traits = []
+    all_styles = []
+    all_interests = []
+    all_catchphrases = []
+    
+    for chunk in chunks[:5]:  # 最多分析5段
+        try:
+            result = await agent._call_llm(
+                "分析这段聊天记录，提取说话风格和性格特征。输出JSON：{traits:[], style:'', interests:[], catchphrases:[]}",
+                chunk
+            )
+            import json as json_mod
+            clean = result.strip()
+            if clean.startswith("```"):
+                clean = clean.split("\n", 1)[1].rsplit("```", 1)[0]
+            data = json_mod.loads(clean)
+            all_traits.extend(data.get("traits", []))
+            if data.get("style"):
+                all_styles.append(data["style"])
+            all_interests.extend(data.get("interests", []))
+            all_catchphrases.extend(data.get("catchphrases", []))
+        except:
+            continue
+    
+    # 合并结果
+    p = agent.personality
+    if all_traits:
+        p.traits = list(set(p.traits + all_traits))
+    if all_styles:
+        p.speaking_style = " ".join(set([p.speaking_style] + all_styles))
+    if all_interests:
+        p.interests = list(set(p.interests + all_interests))
+    if all_catchphrases:
+        p.catchphrases = list(set(p.catchphrases + all_catchphrases))
+    
+    # 存入记忆
+    await agent.memory.add_long_term(
+        f"[炼化-聊天记录] 分析了 {len(chunks)} 段聊天记录",
+        importance=0.9,
+        metadata={"type": "refinement", "source": "chat_history"}
+    )
+    
+    # 更新数据库
+    db = await get_db()
+    import json as json_mod
+    await db.execute(
+        "UPDATE agents SET traits=?, speaking_style=?, interests=?, catchphrases=? WHERE id=?",
+        (json_mod.dumps(p.traits, ensure_ascii=False),
+         p.speaking_style,
+         json_mod.dumps(p.interests, ensure_ascii=False),
+         json_mod.dumps(p.catchphrases, ensure_ascii=False),
+         req.agent_id)
+    )
+    await db.commit()
+    await db.close()
+    
+    return {
+        "status": "ok",
+        "message": f"聊天记录炼化完成！分析了 {len(chunks)} 段",
+        "extracted": {
+            "traits": all_traits,
+            "interests": all_interests,
+            "catchphrases": all_catchphrases,
+        }
+    }
+
+
+# ==================== 群成员管理 ====================
+
+class AddGroupMemberReq(BaseModel):
+    group_id: str
+    user_id: str  # 可以是用户ID或AgentID
+    role: str = "member"  # member / agent
+
+
+@app.post("/api/groups/{group_id}/members")
+async def add_group_member(group_id: str, req: AddGroupMemberReq, user=Depends(get_current_user)):
+    """添加群成员"""
+    db = await get_db()
+    try:
+        await db.execute(
+            "INSERT OR IGNORE INTO group_members (group_id, user_id, role, joined_at) VALUES (?,?,?,?)",
+            (group_id, req.user_id, req.role, now())
+        )
+        await db.commit()
+        return {"status": "ok"}
+    finally:
+        await db.close()
+
+
+@app.delete("/api/groups/{group_id}/members/{user_id}")
+async def remove_group_member(group_id: str, user_id: str, user=Depends(get_current_user)):
+    """移除群成员"""
+    db = await get_db()
+    try:
+        await db.execute(
+            "DELETE FROM group_members WHERE group_id=? AND user_id=?",
+            (group_id, user_id)
+        )
+        await db.commit()
+        return {"status": "ok"}
+    finally:
+        await db.close()
+
+
+# ==================== LLM 配置 API ====================
+
+class LLMConfigReq(BaseModel):
+    provider: str = ""
+    api_key: str = ""
+    base_url: str = ""
+    model: str = ""
+    temperature: float = 0.8
+
+
+@app.post("/api/config/llm")
+async def update_llm_config(req: LLMConfigReq, user=Depends(get_current_user)):
+    """更新 LLM 配置（运行时切换）"""
+    global agent_manager
+    
+    new_config = {}
+    if req.provider:
+        new_config["provider"] = req.provider
+    if req.api_key:
+        new_config["api_key"] = req.api_key
+    if req.base_url:
+        new_config["base_url"] = req.base_url
+    if req.model:
+        new_config["model"] = req.model
+    if req.temperature:
+        new_config["temperature"] = req.temperature
+    
+    # 更新配置
+    agent_manager.llm_config.update(new_config)
+    
+    # 同步更新所有 Agent 的配置
+    for agent in agent_manager.agents.values():
+        agent.llm_config = agent_manager.llm_config
+    
+    logger.info(f"LLM 配置已更新: {new_config}")
+    return {"status": "ok", "config": agent_manager.llm_config}
+
+
+@app.get("/api/config/llm")
+async def get_llm_config(user=Depends(get_current_user)):
+    """获取当前 LLM 配置"""
+    cfg = agent_manager.llm_config.copy()
+    # 隐藏 API Key
+    if cfg.get("api_key"):
+        cfg["api_key"] = cfg["api_key"][:8] + "***"
+    return cfg
+
+
+@app.get("/api/config/providers")
+async def list_providers():
+    """列出支持的 LLM 提供商"""
+    return {
+        "providers": [
+            {"id": "openai", "name": "OpenAI", "models": ["gpt-4o", "gpt-4o-mini", "gpt-3.5-turbo"], "base_url": "https://api.openai.com/v1"},
+            {"id": "deepseek", "name": "DeepSeek", "models": ["deepseek-chat", "deepseek-reasoner"], "base_url": "https://api.deepseek.com/v1"},
+            {"id": "zhipu", "name": "智谱AI", "models": ["glm-4", "glm-4-flash"], "base_url": "https://open.bigmodel.cn/api/paas/v4"},
+            {"id": "qwen", "name": "通义千问", "models": ["qwen-max", "qwen-plus", "qwen-turbo"], "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1"},
+            {"id": "local", "name": "本地模型", "models": ["ollama/any"], "base_url": "http://localhost:11434/v1"},
         ]
     }
