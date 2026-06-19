@@ -2,10 +2,12 @@
 import asyncio
 import json
 import os
+import random
 import time
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Optional
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -165,6 +167,7 @@ class SendMessageReq(BaseModel):
     group_id: str
     content: str
     msg_type: str = "text"
+    voice_url: str = ""
 
 class CreateAgentReq(BaseModel):
     name: str
@@ -382,20 +385,22 @@ async def send_message(req: SendMessageReq, user=Depends(get_current_user)):
                 "sender_id": user["user_id"], "sender_name": nickname,
                 "content": req.content, "msg_type": req.msg_type,
                 "is_agent": False, "created_at": ts,
+                "voice_url": req.voice_url or "",
             }
         }
         await ws_manager.broadcast_to_group(req.group_id, msg_data, exclude_user=user["user_id"])
 
-        # 触发 Agent 回复（异步）
-        asyncio.create_task(_trigger_agent_replies(req.group_id, user["user_id"], nickname, req.content, db))
+        # 触发 Agent 回复（异步，独立连接）
+        asyncio.create_task(_trigger_agent_replies(req.group_id, user["user_id"], nickname, req.content))
 
         return {"id": msg_id, "created_at": ts}
     finally:
         await db.close()
 
 
-async def _trigger_agent_replies(group_id: str, sender_id: str, sender_name: str, content: str, db):
+async def _trigger_agent_replies(group_id: str, sender_id: str, sender_name: str, content: str):
     """触发 Agent 回复"""
+    db = await get_db()
     try:
         replies = await agent_manager.handle_group_message(group_id, sender_id, sender_name, content)
         
@@ -433,6 +438,8 @@ async def _trigger_agent_replies(group_id: str, sender_id: str, sender_name: str
             
     except Exception as e:
         logger.error(f"Agent 回复异常: {e}")
+    finally:
+        await db.close()
 
 
 # ==================== Agent API ====================
