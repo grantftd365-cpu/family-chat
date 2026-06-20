@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>FamilyChat</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏠</text></svg>">
+<style>
+/* ========== THEME SYSTEM ========== */
+:root {
+  --green:#07C160; --green-d:#06AD56; --green-l:#E8F8EE;
+  --bg:#EDEDED; --bg2:#F7F7F7; --bg3:#F0F0F0;
+  --card:#FFFFFF; --card2:#FAFAFA;
+  --txt:#111111; --txt2:#888888; --txt3:#B2B2B2; --txt4:#CCCCCC;
+  --border:#E6E6E6; --border2:#F0F0F0;
+  --red:#FA5151; --red-l:#FFEDED;
+  --link:#576B95; --link-l:#EEF2F8;
+  --right:#95EC69; --right2:#7ED957;
+  --left:#FFFFFF;
+  --shadow:0 1px 3px rgba(0,0,0,.08); --shadow2:0 4px 12px rgba(0,0,0,.1);
+  --shadow-float:0 8px 24px rgba(0,0,0,.15);
+  --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px);
+  --radius:8px; --radius-lg:12px; --radius-xl:16px;
+  --transition:all .2s ease; --transition-slow:all .3s cubic-bezier(.4,0,.2,1);
+}
+/* Dark mode */
+.dark {
+  --bg:#111111; --bg2:#1C1C1C; --bg3:#222222;
+  --card:#1C1C1C; --card2:#2C2C2C;
+  --txt:#E5E5E5; --txt2:#888888; --txt3:#666666; --txt4:#444444;
+  --border:#2C2C2C; --border2:#333333;
+  --left:#2C2C2C; --right:#2B6A3D;
+  --shadow:0 1px 3px rgba(0,0,0,.3); --shadow2:0 4px 12px rgba(0,0,0,.4);
+}
+
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue','PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg);color:var(--txt);font-size:16px;overflow:hidden;-webkit-font-smoothing:antialiased}
+input,textarea,button{font-family:inherit;font-size:16px}
+::-webkit-scrollbar{width:0;display:none}
+::selection{background:var(--green-l);color:var(--green)}
+
+#app{height:100%;position:relative;overflow:hidden}
+.page{display:none;height:100%;flex-direction:column;position:absolute;inset:0;background:var(--bg);z-index:1;overflow:hidden}
+.page.active{display:flex}
+
+/* ========== ANIMATIONS ========== */
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes slideUp{from{transform:translateY(100%)}to{transform:none}}
+@keyframes slideRight{from{transform:translateX(-30%);opacity:0}to{transform:none;opacity:1}}
+@keyframes slideLeft{from{transform:translateX(30%);opacity:0}to{transform:none;opacity:1}}
+@keyframes scaleIn{from{transform:scale(.9);opacity:0}to{transform:none;opacity:1}}
+@keyframes bounceIn{0%{transform:scale(0)}50%{transform:scale(1.1)}100%{transform:scale(1)}}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(7,193,96,.4)}50%{box-shadow:0 0 0 12px rgba(7,193,96,0)}}
+@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+@keyframes typing{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-5px)}}
+@keyframes wave{0%,100%{transform:scaleY(1)}50%{transform:scaleY(.3)}}
+@keyframes toastIn{from{opacity:0;transform:translate(-50%,-50%) scale(.85)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+@keyframes unreadBounce{0%{transform:scale(0)}60%{transform:scale(1.2)}100%{transform:scale(1)}}
+@keyframes ripple{to{transform:scale(4);opacity:0}}
+
+/* ========== HEADER ========== */
+.hd{background:var(--card);border-bottom:.5px solid var(--border);padding:10px 16px;padding-top:calc(10px + var(--safe-t));display:flex;align-items:center;gap:12px;min-height:56px;position:relative;z-index:10;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
+.hd-title{flex:1;font-size:17px;font-weight:600;text-align:center;letter-spacing:-.2px}
+.hd .back{background:none;border:none;font-size:26px;color:var(--txt);cursor:pointer;padding:4px 8px 4px 0;line-height:1;transition:var(--transition)}
+.hd .back:active{opacity:.5;transform:translateX(-2px)}
+.hd .act{background:none;border:none;font-size:20px;cursor:pointer;padding:4px;transition:var(--transition)}
+.hd .act:active{opacity:.5}
+
+/* ========== SKELETON ========== */
+.skeleton{background:linear-gradient(90deg,var(--bg3) 25%,var(--bg2) 50%,var(--bg3) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:var(--radius)}
+.skel-line{height:14px;margin:8px 0}
+.skel-avatar{width:52px;height:52px;border-radius:var(--radius)}
+.skel-title{height:18px;width:120px}
+.skel-text{height:13px;width:200px}
+
+/* ========== LOGIN ========== */
+.login-pg{background:var(--bg);justify-content:center;align-items:center;padding:0 24px}
+.login-hero{text-align:center;padding:0 0 48px;animation:fadeIn .6s}
+.login-hero .logo{font-size:80px;margin-bottom:20px;filter:drop-shadow(0 4px 12px rgba(7,193,96,.2))}
+.login-hero h1{font-size:26px;font-weight:700;letter-spacing:-.5px;margin-bottom:8px}
+.login-hero p{font-size:15px;color:var(--txt2)}
+.login-form{width:100%;max-width:380px;animation:slideUp .5s ease-out .2s both}
+.login-form .field{border-bottom:1px solid var(--border);transition:var(--transition)}
+.login-form .field:focus-within{border-color:var(--green)}
+.login-form .field input{width:100%;padding:16px 0;border:none;background:transparent;font-size:16px;outline:none;color:var(--txt)}
+.login-form .field input::placeholder{color:var(--txt3)}
+.login-form .extra{display:none;overflow:hidden;max-height:0;transition:max-height .3s ease}
+.login-form .extra.show{display:block;max-height:200px}
+.login-form .err{color:var(--red);font-size:13px;padding:8px 0;display:none;text-align:center;animation:scaleIn .2s}
+.login-btn{width:100%;padding:15px;margin-top:28px;border:none;border-radius:var(--radius-lg);background:var(--green);color:#fff;font-size:17px;font-weight:600;cursor:pointer;transition:var(--transition);position:relative;overflow:hidden}
+.login-btn:active{background:var(--green-d);transform:scale(.98)}
+.login-btn .spinner{display:none;width:20px;height:20px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear;position:absolute;right:20px;top:50%;margin-top:-10px}
+.login-btn.loading .spinner{display:block}
+.login-sw{text-align:center;margin-top:20px;font-size:14px;color:var(--link);cursor:pointer;transition:var(--transition)}
+.login-sw:active{opacity:.6}
+
+/* ========== MAIN PAGE ========== */
+.main-pg{background:var(--bg)}
+.main-hd{background:var(--card);border-bottom:.5px solid var(--border);padding:10px 16px;padding-top:calc(10px + var(--safe-t));display:flex;justify-content:space-between;align-items:center}
+.main-hd h1{font-size:17px;font-weight:600}
+.main-hd .acts{display:flex;gap:16px}
+.main-hd .acts button{background:none;border:none;font-size:20px;cursor:pointer;padding:4px;border-radius:50%;transition:var(--transition)}
+.main-hd .acts button:active{background:var(--bg2);transform:scale(.9)}
+
+/* Tab bar */
+.tabs{display:flex;background:var(--card);border-top:.5px solid var(--border);padding:2px 0;padding-bottom:calc(2px + var(--safe-b));position:relative}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:1px;padding:6px 0 4px;cursor:pointer;border:none;background:none;color:var(--txt2);font-size:10px;transition:var(--transition);position:relative}
+.tab.active{color:var(--green)}
+.tab .icon{font-size:22px;line-height:1.2;transition:var(--transition)}
+.tab.active .icon{transform:scale(1.1)}
+.tab .badge{position:absolute;top:2px;right:22%;min-width:16px;height:16px;border-radius:8px;background:var(--red);color:#fff;font-size:10px;line-height:16px;text-align:center;padding:0 4px;font-weight:600;animation:unreadBounce .3s ease-out;box-shadow:0 1px 4px rgba(250,81,81,.4)}
+.panel{display:none;flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.panel.active{display:block;animation:fadeIn .15s}
+
+/* ========== CONVERSATION LIST ========== */
+.conv-item{display:flex;align-items:center;padding:12px 16px;background:var(--card);border-bottom:.5px solid var(--border);cursor:pointer;transition:var(--transition);position:relative;overflow:hidden}
+.conv-item:active{background:var(--bg2)}
+.conv-item::after{content:'';position:absolute;inset:0;background:var(--green);opacity:0;transition:opacity .15s}
+.conv-item:active::after{opacity:.03}
+.conv-av{width:52px;height:52px;border-radius:var(--radius);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:28px;position:relative;background:var(--bg2);box-shadow:var(--shadow)}
+.conv-av .online-dot{position:absolute;bottom:1px;right:1px;width:10px;height:10px;border-radius:50%;background:var(--green);border:2px solid var(--card);box-shadow:0 0 4px rgba(7,193,96,.4)}
+.conv-body{flex:1;margin-left:12px;overflow:hidden}
+.conv-body .name{font-size:16px;font-weight:500;line-height:1.4;letter-spacing:-.2px}
+.conv-body .preview{font-size:13px;color:var(--txt2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px}
+.conv-meta{text-align:right;flex-shrink:0;margin-left:8px}
+.conv-meta .time{font-size:11px;color:var(--txt3)}
+.conv-meta .unread{display:inline-block;min-width:18px;height:18px;border-radius:9px;background:var(--red);color:#fff;font-size:10px;text-align:center;line-height:18px;padding:0 5px;margin-top:4px;font-weight:600;box-shadow:0 1px 4px rgba(250,81,81,.3)}
+
+/* ========== CHAT PAGE ========== */
+.chat-pg{background:var(--bg)}
+.msgs{flex:1;overflow-y:auto;padding:8px 12px;-webkit-overflow-scrolling:touch;scroll-behavior:smooth}
+
+/* Time divider */
+.time-divider{text-align:center;margin:16px 0 12px;animation:fadeIn .3s}
+.time-divider span{font-size:11px;color:var(--txt3);background:var(--bg2);padding:3px 10px;border-radius:10px;font-weight:500}
+
+/* Message row */
+.msg-row{display:flex;gap:8px;margin-bottom:14px;max-width:80%;animation:msgIn .3s ease-out}
+.msg-row.right{margin-left:auto;flex-direction:row-reverse}
+.msg-row.left{margin-right:auto}
+@keyframes msgIn{from{opacity:0;transform:translateY(6px) scale(.97)}to{opacity:1;transform:none}}
+
+.msg-av{width:40px;height:40px;border-radius:var(--radius);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:22px;background:var(--bg2);cursor:pointer;transition:var(--transition);box-shadow:var(--shadow)}
+.msg-av:active{transform:scale(.9)}
+.msg-content{display:flex;flex-direction:column;min-width:0}
+.msg-name{font-size:11px;color:var(--txt2);margin-bottom:3px;padding:0 4px;display:flex;align-items:center;gap:4px}
+.msg-row.right .msg-name{justify-content:flex-end}
+.msg-tag{display:inline-block;font-size:9px;background:var(--green);color:#fff;padding:1px 5px;border-radius:3px;font-weight:600;letter-spacing:.5px}
+
+/* Bubble */
+.msg-bubble{padding:9px 12px;border-radius:var(--radius);font-size:15px;line-height:1.5;word-break:break-word;position:relative;max-width:100%;box-shadow:0 1px 1px rgba(0,0,0,.04);transition:var(--transition)}
+.msg-row.right .msg-bubble{background:var(--right);border-top-right-radius:2px}
+.msg-row.left .msg-bubble{background:var(--left);border-top-left-radius:2px}
+.msg-row.right .msg-bubble::before{content:'';position:absolute;top:0;right:-6px;width:6px;height:12px;background:var(--right);clip-path:polygon(0 0,0 100%,100% 50%)}
+.msg-row.left .msg-bubble::before{content:'';position:absolute;top:0;left:-6px;width:6px;height:12px;background:var(--left);clip-path:polygon(100% 0,0 50%,100% 100%)}
+.msg-bubble:active{opacity:.85}
+
+.msg-time{font-size:10px;color:var(--txt3);margin-top:3px;padding:0 4px}
+.msg-row.right .msg-time{text-align:right}
+.msg-status{font-size:10px;color:var(--txt3);margin-left:4px}
+
+/* Reply quote */
+.msg-reply{font-size:12px;color:var(--txt2);background:rgba(0,0,0,.04);padding:5px 8px;border-radius:4px;margin-bottom:5px;border-left:3px solid var(--green);cursor:pointer;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:var(--transition)}
+.msg-reply:active{background:rgba(0,0,0,.08)}
+.msg-row.right .msg-reply{background:rgba(0,0,0,.06)}
+
+/* Voice */
+.voice-bub{display:flex;align-items:center;gap:8px;min-width:90px;cursor:pointer;padding:2px 0}
+.voice-bub .v-icon{font-size:16px;opacity:.7}
+.voice-wave{display:flex;align-items:center;gap:2px;height:18px}
+.voice-wave span{width:3px;border-radius:2px;background:var(--txt)}
+.voice-wave span:nth-child(1){height:6px}.voice-wave span:nth-child(2){height:12px}.voice-wave span:nth-child(3){height:8px}.voice-wave span:nth-child(4){height:14px}.voice-wave span:nth-child(5){height:6px}
+.voice-playing .voice-wave span{background:var(--green);animation:wave .8s ease-in-out infinite}
+.voice-playing .voice-wave span:nth-child(2){animation-delay:.08s}.voice-playing .voice-wave span:nth-child(3){animation-delay:.16s}.voice-playing .voice-wave span:nth-child(4){animation-delay:.24s}.voice-playing .voice-wave span:nth-child(5){animation-delay:.32s}
+.msg-img{max-width:200px;max-height:240px;border-radius:var(--radius);cursor:pointer;display:block;box-shadow:var(--shadow);transition:var(--transition)}
+.msg-img:active{transform:scale(.97)}
+
+/* Typing indicator */
+.typing-dots{display:flex;gap:5px;padding:8px 12px}
+.typing-dots span{width:7px;height:7px;background:var(--txt3);border-radius:50%;animation:typing 1.2s infinite}
+.typing-dots span:nth-child(2){animation-delay:.15s}.typing-dots span:nth-child(3){animation-delay:.3s}
+
+/* ========== INPUT AREA ========== */
+.input-area{background:var(--card);border-top:.5px solid var(--border);padding:8px 10px;padding-bottom:calc(8px + var(--safe-b));display:flex;align-items:flex-end;gap:6px}
+.input-area .tool-btn{background:none;border:none;font-size:22px;cursor:pointer;padding:6px;flex-shrink:0;line-height:1;border-radius:50%;transition:var(--transition)}
+.input-area .tool-btn:active{background:var(--bg2);transform:scale(.9)}
+.input-area textarea{flex:1;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--card);font-size:15px;resize:none;outline:none;max-height:120px;min-height:38px;line-height:1.4;transition:border-color .2s;color:var(--txt)}
+.input-area textarea:focus{border-color:var(--green)}
+.send-btn{padding:9px 18px;background:var(--green);color:#fff;border:none;border-radius:var(--radius-lg);font-size:14px;font-weight:600;cursor:pointer;flex-shrink:0;transition:var(--transition)}
+.send-btn:active{background:var(--green-d);transform:scale(.95)}
+.send-btn:disabled{background:var(--txt4);cursor:not-allowed}
+.record-btn{flex:1;padding:10px;border:2px solid var(--green);border-radius:24px;background:var(--card);color:var(--green);font-size:15px;font-weight:500;cursor:pointer;text-align:center;transition:var(--transition)}
+.record-btn:active,.record-btn.recording{background:var(--green);color:#fff;border-color:var(--green)}
+.record-btn.recording{animation:pulse 1s infinite}
+
+/* Emoji panel */
+.emoji-panel{display:none;background:var(--card);border-top:.5px solid var(--border);padding:12px;max-height:220px;overflow-y:auto;flex-wrap:wrap;gap:2px}
+.emoji-panel.show{display:flex;animation:slideUp .2s ease-out}
+.emoji-item{width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:24px;cursor:pointer;border-radius:var(--radius);transition:var(--transition)}
+.emoji-item:active{background:var(--bg2);transform:scale(1.2)}
+
+/* ========== CONTACTS ========== */
+.sec-title{padding:8px 16px;font-size:13px;color:var(--txt2);background:var(--bg);position:sticky;top:0;z-index:1;font-weight:500}
+.contact-item{display:flex;align-items:center;padding:11px 16px;background:var(--card);border-bottom:.5px solid var(--border);cursor:pointer;transition:var(--transition)}
+.contact-item:active{background:var(--bg2)}
+.contact-av{width:40px;height:40px;border-radius:var(--radius);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;background:var(--bg2);position:relative;box-shadow:var(--shadow)}
+.contact-name{margin-left:12px;font-size:16px;flex:1;font-weight:400}
+.contact-badge{font-size:10px;background:var(--green);color:#fff;padding:2px 7px;border-radius:4px;font-weight:600}
+
+/* ========== PROFILE ========== */
+.profile-hd{background:linear-gradient(135deg,#4A90D9 0%,#357ABD 50%,#2E6BA6 100%);padding:60px 20px 32px;display:flex;align-items:center;gap:16px;position:relative;overflow:hidden}
+.profile-hd::after{content:'';position:absolute;top:-50%;right:-20%;width:200px;height:200px;background:rgba(255,255,255,.05);border-radius:50%}
+.profile-av{width:64px;height:64px;border-radius:var(--radius-lg);display:flex;align-items:center;justify-content:center;font-size:36px;background:rgba(255,255,255,.15);backdrop-filter:blur(10px);box-shadow:0 4px 12px rgba(0,0,0,.1)}
+.profile-info h2{color:#fff;font-size:20px;font-weight:600;margin-bottom:4px;letter-spacing:-.3px}
+.profile-info p{color:rgba(255,255,255,.7);font-size:14px}
+.profile-section{margin-top:10px}
+.profile-row{display:flex;align-items:center;padding:15px 20px;background:var(--card);border-bottom:.5px solid var(--border);cursor:pointer;transition:var(--transition)}
+.profile-row:active{background:var(--bg2)}
+.profile-row .icon{font-size:20px;margin-right:14px;width:24px;text-align:center}
+.profile-row .label{flex:1;font-size:16px}
+.profile-row .arrow{color:var(--txt3);font-size:14px}
+.profile-row .val{color:var(--txt2);font-size:14px;margin-right:8px}
+.logout-btn{display:block;margin:20px auto;padding:12px 40px;background:none;border:1px solid var(--red);color:var(--red);border-radius:var(--radius-lg);font-size:16px;cursor:pointer;transition:var(--transition)}
+.logout-btn:active{background:var(--red-l);transform:scale(.97)}
+
+/* ========== MODALS ========== */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100;display:none;align-items:flex-end;justify-content:center;backdrop-filter:blur(4px)}
+.modal-bg.show{display:flex;animation:fadeIn .15s}
+.modal-box{background:var(--card);border-radius:var(--radius-xl) var(--radius-xl) 0 0;width:100%;max-width:500px;max-height:85vh;overflow-y:auto;padding:24px 20px;animation:slideUp .25s ease-out}
+.modal-box h3{font-size:18px;font-weight:600;text-align:center;margin-bottom:20px}
+.modal-box input,.modal-box textarea{width:100%;padding:13px 14px;border:1px solid var(--border);border-radius:var(--radius);font-size:15px;margin-bottom:12px;outline:none;background:var(--card2);color:var(--txt);transition:border-color .2s}
+.modal-box input:focus,.modal-box textarea:focus{border-color:var(--green);background:var(--card)}
+.modal-btn{width:100%;padding:14px;border:none;border-radius:var(--radius);font-size:16px;cursor:pointer;margin-bottom:8px;font-weight:500;transition:var(--transition)}
+.modal-btn-ok{background:var(--green);color:#fff}
+.modal-btn-ok:active{background:var(--green-d)}
+.modal-btn-cancel{background:var(--bg);color:var(--txt)}
+
+/* ========== CONTEXT MENU ========== */
+.ctx-menu{position:fixed;background:var(--card);border-radius:var(--radius-lg);z-index:200;overflow:hidden;box-shadow:var(--shadow-float);animation:scaleIn .15s ease-out;min-width:140px}
+.ctx-item{padding:12px 18px;font-size:15px;cursor:pointer;border-bottom:.5px solid var(--border);transition:var(--transition);display:flex;align-items:center;gap:10px}
+.ctx-item:last-child{border-bottom:none}
+.ctx-item:active{background:var(--bg2)}
+.ctx-item.danger{color:var(--red)}
+.ctx-item .ctx-icon{font-size:16px;width:20px;text-align:center}
+
+/* ========== DETAIL PAGES ========== */
+.detail-header{text-align:center;padding:32px 20px;background:var(--card);margin-bottom:10px}
+.detail-header .av{font-size:64px;margin-bottom:12px}
+.detail-header h2{font-size:20px;font-weight:600;margin-bottom:4px}
+.detail-header p{font-size:14px;color:var(--txt2)}
+.detail-section{background:var(--card);margin-bottom:10px}
+.detail-row{display:flex;align-items:center;padding:14px 16px;border-bottom:.5px solid var(--border)}
+.detail-row .label{font-size:14px;color:var(--txt2);width:80px;flex-shrink:0}
+.detail-row .value{flex:1;font-size:15px}
+.member-grid{display:flex;flex-wrap:wrap;gap:16px;padding:16px}
+.member-cell{display:flex;flex-direction:column;align-items:center;gap:4px;width:60px;cursor:pointer;transition:var(--transition)}
+.member-cell:active{transform:scale(.9)}
+.member-cell .av{width:48px;height:48px;border-radius:var(--radius);display:flex;align-items:center;justify-content:center;font-size:26px;background:var(--bg2);box-shadow:var(--shadow)}
+.member-cell .name{font-size:11px;color:var(--txt2);text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%}
+
+/* Friend requests */
+.fr-item{display:flex;align-items:center;padding:12px 16px;background:var(--card);border-bottom:.5px solid var(--border)}
+.fr-item .av{width:48px;height:48px;border-radius:var(--radius);display:flex;align-items:center;justify-content:center;font-size:26px;flex-shrink:0;background:var(--bg2);box-shadow:var(--shadow)}
+.fr-item .info{flex:1;margin-left:12px}
+.fr-item .info .name{font-size:16px;font-weight:500}
+.fr-item .info .msg{font-size:13px;color:var(--txt2);margin-top:2px}
+.fr-actions{display:flex;gap:8px}
+.fr-actions button{padding:7px 18px;border-radius:var(--radius);font-size:13px;cursor:pointer;border:none;font-weight:500;transition:var(--transition)}
+.fr-accept{background:var(--green);color:#fff}
+.fr-accept:active{background:var(--green-d)}
+.fr-reject{background:var(--bg);color:var(--txt2)}
+
+/* ========== EMPTY STATE ========== */
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--txt2);gap:16px;padding:40px}
+.empty .icon{font-size:56px;opacity:.6}
+.empty p{font-size:14px;text-align:center;line-height:1.6}
+
+/* ========== TOAST ========== */
+.toast{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);padding:12px 28px;background:rgba(0,0,0,.8);color:#fff;border-radius:var(--radius-lg);font-size:14px;z-index:999;animation:toastIn .25s ease-out;backdrop-filter:blur(10px);font-weight:500}
+
+/* ========== SEARCH BAR ========== */
+.search-bar{padding:8px 16px;background:var(--bg)}
+.search-bar input{width:100%;padding:9px 14px;border:none;border-radius:var(--radius);background:var(--card);font-size:14px;outline:none;box-shadow:var(--shadow)}
+
+/* ========== RELATION GRAPH ========== */
+.relation-graph{padding:20px}
+.relation-node{display:inline-flex;flex-direction:column;align-items:center;gap:4px;padding:12px;margin:6px;background:var(--card);border-radius:var(--radius-lg);box-shadow:var(--shadow);cursor:pointer;transition:var(--transition)}
+.relation-node:active{transform:scale(.95);box-shadow:var(--shadow2)}
+.relation-node .av{font-size:32px}
+.relation-node .name{font-size:12px;color:var(--txt2);font-weight:500}
+.relation-line{color:var(--txt3);font-size:11px;text-align:center;padding:2px 0}
+
+/* ========== VOICE RECORDER ========== */
+.voice-recorder{position:fixed;bottom:100px;left:50%;transform:translateX(-50%);background:var(--card);border-radius:var(--radius-xl);padding:20px 32px;box-shadow:var(--shadow-float);z-index:150;display:none;flex-direction:column;align-items:center;gap:12px;animation:scaleIn .2s}
+.voice-recorder.show{display:flex}
+.voice-recorder .vu-meter{width:120px;height:6px;background:var(--bg);border-radius:3px;overflow:hidden}
+.voice-recorder .vu-fill{height:100%;background:var(--green);border-radius:3px;transition:width .1s}
+
+/* ========== REFINEMENT PAGE ========== */
+.refine-card{background:var(--card);border-radius:var(--radius-lg);padding:16px;margin:10px 16px;box-shadow:var(--shadow)}
+.refine-card h3{font-size:16px;font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.refine-card p{font-size:13px;color:var(--txt2);line-height:1.5}
+.refine-progress{height:4px;background:var(--bg);border-radius:2px;margin-top:12px;overflow:hidden}
+.refine-progress .bar{height:100%;background:linear-gradient(90deg,var(--green),#4ADE80);border-radius:2px;transition:width .5s ease}
+.trait-chip{display:inline-block;padding:4px 10px;background:var(--green-l);color:var(--green);border-radius:12px;font-size:12px;margin:3px;font-weight:500}
+.mood-chip{display:inline-block;padding:4px 10px;border-radius:12px;font-size:12px;margin:3px;font-weight:500}
+
+/* ========== ACTION SHEET ========== */
+.action-sheet{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;display:none;align-items:flex-end;justify-content:center}
+.action-sheet.show{display:flex;animation:fadeIn .15s}
+.action-sheet-box{background:var(--bg);width:100%;max-width:500px;border-radius:var(--radius-xl) var(--radius-xl) 0 0;padding:8px;padding-bottom:calc(8px + var(--safe-b));animation:slideUp .25s ease-out}
+.action-sheet-item{padding:15px;text-align:center;font-size:17px;background:var(--card);cursor:pointer;transition:var(--transition)}
+.action-sheet-item:first-child{border-radius:var(--radius-lg) var(--radius-lg) 0 0}
+.action-sheet-item:last-child{border-radius:0 0 var(--radius-lg) var(--radius-lg);margin-top:8px}
+.action-sheet-item:active{background:var(--bg2)}
+.action-sheet-item.danger{color:var(--red)}
+
+/* ========== RELATIONSHIP GRAPH (SVG) ========== */
+.rel-graph-container{padding:16px;background:var(--card);border-radius:var(--radius-lg);margin:10px;overflow:auto}
+.rel-graph-container svg{width:100%;min-height:300px}
+.rel-node{cursor:pointer}
+.rel-node circle{transition:var(--transition)}
+.rel-node:hover circle{filter:brightness(1.1)}
+.rel-node text{font-size:11px;fill:var(--txt);text-anchor:middle;pointer-events:none}
+.rel-link{stroke:var(--border);stroke-width:2;fill:none}
+.rel-link-label{font-size:10px;fill:var(--txt2);text-anchor:middle}
+
+/* ========== VOICE CLONING ========== */
+.voice-sample{display:flex;align-items:center;gap:12px;padding:12px;background:var(--bg2);border-radius:var(--radius);margin:8px 0}
+.voice-sample .play-btn{width:36px;height:36px;border-radius:50%;background:var(--green);color:#fff;border:none;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.voice-sample .info{flex:1}
+.voice-sample .info .name{font-size:14px;font-weight:500}
+.voice-sample .info .dur{font-size:12px;color:var(--txt2)}
+.voice-sample .del{background:none;border:none;color:var(--red);font-size:18px;cursor:pointer;padding:4px}
+
+/* ========== DASHBOARD ========== */
+.dash-stat{display:flex;gap:12px;padding:16px}
+.dash-stat .stat-card{flex:1;background:var(--card);border-radius:var(--radius-lg);padding:16px;text-align:center;box-shadow:var(--shadow)}
+.dash-stat .stat-num{font-size:24px;font-weight:700;color:var(--green)}
+.dash-stat .stat-label{font-size:12px;color:var(--txt2);margin-top:4px}
+
+/* ========== RIPPLE EFFECT ========== */
+.ripple{position:relative;overflow:hidden}
+.ripple::before{content:'';position:absolute;width:100%;height:100%;background:radial-gradient(circle,rgba(0,0,0,.08) 10%,transparent 10.01%);transform:scale(10);opacity:0;transition:transform .5s,opacity .8s}
+.ripple:active::before{transform:scale(0);opacity:1;transition:0s}
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- ===== LOGIN ===== -->
+<div id="loginPage" class="page login-pg active">
+  <div class="login-hero">
+    <div class="logo">🏠</div>
+    <h1>FamilyChat</h1>
+    <p>家庭数字人聊天</p>
+  </div>
+  <div class="login-form">
+    <div id="loginErr" class="err"></div>
+    <div id="extraFields" class="extra">
+      <div class="field"><input id="regNick" placeholder="你的昵称"></div>
+      <div class="field"><input id="regRole" placeholder="家庭角色（爸爸/妈妈/儿子...）"></div>
+    </div>
+    <div class="field"><input id="loginEmail" type="email" placeholder="邮箱" autocomplete="email"></div>
+    <div class="field"><input id="loginPass" type="password" placeholder="密码" autocomplete="current-password"></div>
+    <button class="login-btn" id="loginBtn"><span class="btn-text">登录</span><span class="spinner"></span></button>
+    <div class="login-sw" id="loginSw">注册新账号</div>
+  </div>
+</div>
+
+<!-- ===== MAIN ===== -->
+<div id="mainPage" class="page main-pg">
+  <div class="main-hd">
+    <h1>微信</h1>
+    <div class="acts">
+      <button onclick="showModal('searchModal')" title="搜索">🔍</button>
+      <button onclick="showModal('createGroupModal')" title="发起群聊">＋</button>
+    </div>
+  </div>
+  <div style="flex:1;overflow:hidden;position:relative">
+    <div id="panelChat" class="panel active"></div>
+    <div id="panelContact" class="panel"></div>
+    <div id="panelProfile" class="panel"></div>
+  </div>
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('Chat',this)"><span class="icon">💬</span><span>微信</span><span class="badge" id="badgeChat" style="display:none"></span></button>
+    <button class="tab" onclick="switchTab('Contact',this)"><span class="icon">👥</span><span>通讯录</span><span class="badge" id="badgeContact" style="display:none"></span></button>
+    <button class="tab" onclick="switchTab('Profile',this)"><span class="icon">👤</span><span>我</span></button>
+  </div>
+</div>
+
+<!-- ===== CHAT ===== -->
+<div id="chatPage" class="page chat-pg">
+  <div class="hd">
+    <button class="back" onclick="goBack()">‹</button>
+    <div class="hd-title" id="chatTitle">-</div>
+    <button class="act" onclick="openChatDetail()">⋯</button>
+  </div>
+  <div class="msgs" id="msgList"></div>
+  <div class="emoji-panel" id="emojiPanel"></div>
+  <div class="input-area" id="inputArea">
+    <button class="tool-btn" onclick="toggleEmoji()">😊</button>
+    <button class="tool-btn" onclick="$('imgFile').click()">📷</button>
+    <input type="file" id="imgFile" accept="image/*" style="display:none" onchange="sendImage(this)">
+    <button class="tool-btn" id="voiceToggle" onclick="toggleVoice()">🎤</button>
+    <textarea id="msgInput" rows="1" placeholder="消息" oninput="autoGrow(this)" onkeydown="onKey(event)"></textarea>
+    <button class="record-btn" id="recordBtn" style="display:none" onmousedown="recStart()" onmouseup="recStop()" ontouchstart="recStart()" ontouchend="recStop()">按住 说话</button>
+    <button class="send-btn" id="sendBtn" onclick="sendText()">发送</button>
+  </div>
+</div>
+
+<!-- ===== GROUP DETAIL ===== -->
+<div id="groupDetailPage" class="page">
+  <div class="hd"><button class="back" onclick="showPage('chatPage')">‹</button><div class="hd-title">聊天详情</div><span></span></div>
+  <div style="flex:1;overflow-y:auto" id="groupDetailBody"></div>
+</div>
+
+<!-- ===== FRIEND REQUESTS ===== -->
+<div id="friendReqPage" class="page">
+  <div class="hd"><button class="back" onclick="showPage('mainPage')">‹</button><div class="hd-title">新的朋友</div><span></span></div>
+  <div style="flex:1;overflow-y:auto" id="friendReqBody"></div>
+</div>
+
+<!-- ===== USER PROFILE ===== -->
+<div id="userProfilePage" class="page">
+  <div class="hd"><button class="back" onclick="goBackFromProfile()">‹</button><div class="hd-title">详细资料</div><span></span></div>
+  <div style="flex:1;overflow-y:auto" id="userProfileBody"></div>
+</div>
+
+<!-- ===== REFINEMENT PAGE ===== -->
+<div id="refinePage" class="page">
+  <div class="hd"><button class="back" onclick="goBack()">‹</button><div class="hd-title">🧪 炼化数字人</div><span></span></div>
+  <div style="flex:1;overflow-y:auto" id="refineBody"></div>
+</div>
+
+<!-- ===== AGENT DASHBOARD ===== -->
+<div id="agentDashPage" class="page">
+  <div class="hd"><button class="back" onclick="goBack()">‹</button><div class="hd-title">数字人仪表盘</div><span></span></div>
+  <div style="flex:1;overflow-y:auto" id="agentDashBody"></div>
+</div>
+
+</div><!-- /app -->
+
+<!-- MODALS -->
+<div id="createGroupModal" class="modal-bg" onclick="if(event.target===this)closeModal(this)">
+  <div class="modal-box">
+    <h3>发起群聊</h3>
+    <input id="newGroupName" placeholder="群名称">
+    <input id="newGroupDesc" placeholder="群描述（可选）">
+    <button class="modal-btn modal-btn-ok" onclick="doCreateGroup()">确定</button>
+    <button class="modal-btn modal-btn-cancel" onclick="closeModal($('createGroupModal'))">取消</button>
+  </div>
+</div>
+
+<div id="searchModal" class="modal-bg" onclick="if(event.target===this)closeModal(this)">
+  <div class="modal-box">
+    <h3>搜索</h3>
+    <input id="searchInput" placeholder="搜索用户或消息..." onkeydown="if(event.key==='Enter')doSearch()">
+    <button class="modal-btn modal-btn-ok" onclick="doSearch()">搜索</button>
+    <div id="searchResults" style="margin-top:12px"></div>
+    <button class="modal-btn modal-btn-cancel" onclick="closeModal($('searchModal'))">取消</button>
+  </div>
+</div>
+
+<div id="editProfileModal" class="modal-bg" onclick="if(event.target===this)closeModal(this)">
+  <div class="modal-box">
+    <h3>编辑资料</h3>
+    <input id="editNick" placeholder="昵称">
+    <input id="editAvatar" placeholder="头像（emoji）">
+    <input id="editPhone" placeholder="手机号">
+    <button class="modal-btn modal-btn-ok" onclick="doEditProfile()">保存</button>
+    <button class="modal-btn modal-btn-cancel" onclick="closeModal($('editProfileModal'))">取消</button>
+  </div>
+</div>
+
+<div id="addFriendModal" class="modal-bg" onclick="if(event.target===this)closeModal(this)">
+  <div class="modal-box">
+    <h3>添加好友</h3>
+    <input id="addFriendInput" placeholder="搜索用户名/邮箱/昵称..." onkeydown="if(event.key==='Enter')doSearchFriend()">
+    <button class="modal-btn modal-btn-ok" onclick="doSearchFriend()">搜索</button>
+    <div id="addFriendResults" style="margin-top:12px"></div>
+    <button class="modal-btn modal-btn-cancel" onclick="closeModal($('addFriendModal'))">取消</button>
+  </div>
+</div>
+
+<script>
+/* ==================== STATE ==================== */
+const S={token:localStorage.getItem('fc_token')||'',user:JSON.parse(localStorage.getItem('fc_user')||'null'),convs:[],agents:[],friends:[],curConv:null,curConvName:'',curConvType:'',curConvAv:'',curConvOther:'',ws:null,isReg:false,voiceMode:false,pageStack:[],darkMode:localStorage.getItem('fc_dark')==='1'};
+const $=id=>document.getElementById(id);
+
+/* ==================== THEME ==================== */
+if(S.darkMode)document.body.classList.add('dark');
+
+/* ==================== API ==================== */
+async function api(path,opts={}){const h={'Content-Type':'application/json'};if(S.token)h['Authorization']=`Bearer ${S.token}`;const r=await fetch(path,{...opts,headers:{...h,...opts.headers}});if(r.status===401){doLogout();throw new Error('未登录')}if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e.detail||'请求失败')}return r.json()}
+function toast(msg){const d=document.createElement('div');d.className='toast';d.textContent=msg;document.body.appendChild(d);setTimeout(()=>d.remove(),2000)}
+
+/* ==================== NAV ==================== */
+function showPage(id){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));$(id).classList.add('active')}
+function pushPage(id){const cur=document.querySelector('.page.active');if(cur)S.pageStack.push(cur.id);showPage(id)}
+function goBack(){if(S.pageStack.length)showPage(S.pageStack.pop());else{showPage('mainPage');S.curConv=null;loadConvs()}}
+function goBackFromProfile(){if(S.pageStack.length)showPage(S.pageStack.pop());else showPage('mainPage')}
+function switchTab(name,btn){document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));$('panel'+name).classList.add('active');btn.classList.add('active');if(name==='Contact')loadContacts();if(name==='Profile')renderProfile()}
+function showModal(id){$(id).classList.add('show')}
+function closeModal(el){el.classList.remove('show')}
+
+/* ==================== AUTH ==================== */
+$('loginSw').onclick=()=>{S.isReg=!S.isReg;$('extraFields').classList.toggle('show',S.isReg);$('loginBtn').querySelector('.btn-text').textContent=S.isReg?'注册':'登录';$('loginSw').textContent=S.isReg?'已有账号？登录':'注册新账号'};
+$('loginBtn').onclick=async()=>{const email=$('loginEmail').value.trim(),pass=$('loginPass').value.trim();if(!email||!pass)return showErr('请填写邮箱和密码');if(S.isReg&&!$('regNick').value.trim())return showErr('请填写昵称');$('loginBtn').classList.add('loading');try{const ep=S.isReg?'/api/register':'/api/login';const body=S.isReg?{email,username:email.split('@')[0],password:pass,nickname:$('regNick').value.trim(),role_in_family:$('regRole').value.trim()}:{email,password:pass};const d=await api(ep,{method:'POST',body:JSON.stringify(body)});S.token=d.token;S.user=d.user;localStorage.setItem('fc_token',d.token);localStorage.setItem('fc_user',JSON.stringify(d.user));enterApp()}catch(e){showErr(e.message)}finally{$('loginBtn').classList.remove('loading')}};
+function showErr(m){const e=$('loginErr');e.textContent=m;e.style.display='block';setTimeout(()=>e.style.display='none',3000)}
+function doLogout(){S.token='';S.user=null;localStorage.clear();if(S.ws)S.ws.close();showPage('loginPage')}
+
+/* ==================== ENTER ==================== */
+async function enterApp(){showPage('mainPage');await Promise.all([loadConvs(),loadAgents(),loadFriends()]);connectWS();renderProfile();updateBadges()}
+
+/* ==================== CONVERSATIONS ==================== */
+async function loadConvs(){try{S.convs=await api('/api/conversations')}catch(e){console.error(e)}renderConvs()}
+function renderConvs(){const el=$('panelChat');if(!S.convs.length){el.innerHTML='<div class="empty"><span class="icon">💬</span><p>暂无聊天<br><span style="font-size:12px;color:var(--txt3)">点击右上角 + 发起群聊</span></p></div>';return}
+el.innerHTML=S.convs.map(c=>{const av=c.avatar||'👥';const name=esc(c.name);const preview=esc(c.last_message||'');const time=fmtTime(c.last_time);const unread=c.unread_count>0?`<div class="conv-meta"><div class="time">${time}</div><span class="unread">${c.unread_count>99?'99+':c.unread_count}</span></div>`:`<div class="conv-meta"><div class="time">${time}</div></div>`;const onlineDot=(c.conv_type==='private'&&c.other_status==='online')?'<div class="online-dot"></div>':'';return`<div class="conv-item ripple" onclick="openConv('${c.id}','${name}','${esc(av)}','${c.conv_type||'group'}')"><div class="conv-av">${av}${onlineDot}</div><div class="conv-body"><div class="name">${name}</div><div class="preview">${preview}</div></div>${unread}</div>`}).join('')}
+function updateBadges(){const total=S.convs.reduce((s,c)=>s+(c.unread_count||0),0);const bc=$('badgeChat');if(total>0){bc.textContent=total>99?'99+':total;bc.style.display='inline-block'}else{bc.style.display='none'}}
+
+/* ==================== OPEN CONV ==================== */
+async function openConv(id,name,av,type){S.curConv=id;S.curConvName=name;S.curConvType=type;S.curConvAv=av;$('chatTitle').textContent=name;pushPage('chatPage');$('msgList').innerHTML='<div class="empty"><span class="icon" style="animation:spin 1s linear infinite">⏳</span><p>加载中...</p></div>';try{const msgs=await api(`/api/messages/${id}?limit=100`);renderMsgs(msgs);if(S.ws&&S.ws.readyState===1)S.ws.send(JSON.stringify({type:'read',group_id:id}));const conv=S.convs.find(c=>c.id===id);if(conv){conv.unread_count=0;updateBadges()}}catch(e){$('msgList').innerHTML='<div class="empty"><span class="icon">❌</span><p>加载失败</p></div>'}}
+
+/* ==================== MESSAGES ==================== */
+function renderMsgs(msgs){const el=$('msgList');if(!msgs.length){el.innerHTML='<div class="empty"><span class="icon">💬</span><p>说点什么吧</p></div>';return}
+let html='';let lastTime=0;for(const m of msgs){if(m.created_at-lastTime>300){html+=`<div class="time-divider"><span>${fmtDate(m.created_at)}</span></div>`;lastTime=m.created_at}html+=buildMsg(m)}el.innerHTML=html;el.scrollTop=el.scrollHeight}
+function buildMsg(m){const isMe=m.sender_id===S.user?.id;const side=isMe?'right':'left';const av=m.is_agent?(m.agent_avatar||'🤖'):(m.sender_avatar||'😀');const tag=m.is_agent?'<span class="msg-tag">AI</span>':'';let replyHtml='';if(m.reply_to&&m.reply_to.id)replyHtml=`<div class="msg-reply" onclick="scrollToMsg('${m.reply_to.id}')">${esc(m.reply_to.sender_name)}: ${esc(m.reply_to.content)}</div>`;let bubble='';if(m.msg_type==='voice'&&m.media_url)bubble=`<div class="voice-bub" onclick="playVoice(this,'${m.media_url}')"><span class="v-icon">🔊</span><div class="voice-wave"><span></span><span></span><span></span><span></span><span></span></div></div>`;else if(m.msg_type==='image')bubble=`<img class="msg-img" src="${m.media_url||m.content}" onclick="window.open(this.src)" onerror="this.style.display='none'" loading="lazy">`;else bubble=esc(m.content);return`<div class="msg-row ${side}" data-id="${m.id}"><div class="msg-av" onclick="${m.is_agent?`showAgentDetail('${m.sender_id}')`:`showUserProfile('${m.sender_id}')`}">${av}</div><div class="msg-content"><div class="msg-name">${tag}${esc(m.sender_name)}</div>${replyHtml}<div class="msg-bubble" oncontextmenu="showMsgMenu(event,'${m.id}','${m.sender_id}')">${bubble}</div><div class="msg-time">${fmtTime(m.created_at)}</div></div></div>`}
+function appendMsg(m){const el=$('msgList');const empty=el.querySelector('.empty');if(empty)empty.remove();if(m.is_agent)removeTyping(m.sender_name);el.insertAdjacentHTML('beforeend',buildMsg(m));el.scrollTop=el.scrollHeight}
+function scrollToMsg(id){const el=document.querySelector(`[data-id="${id}"]`);if(el){el.scrollIntoView({behavior:'smooth',block:'center'});el.style.background='rgba(7,193,96,.1)';setTimeout(()=>el.style.background='',1500)}}
+function showTyping(name,av){const el=$('msgList');const id='typing-'+name.replace(/\s/g,'');if($(id))return;el.insertAdjacentHTML('beforeend',`<div class="msg-row left" id="${id}"><div class="msg-av">${av||'🤖'}</div><div class="msg-content"><div class="msg-name">${name}</div><div class="msg-bubble"><div class="typing-dots"><span></span><span></span><span></span></div></div></div></div>`);el.scrollTop=el.scrollHeight}
+function removeTyping(name){const e=$('typing-'+name.replace(/\s/g,''));if(e)e.remove()}
+
+/* ==================== CONTEXT MENU ==================== */
+let ctxMenu=null;function showMsgMenu(ev,msgId,senderId){ev.preventDefault();removeCtxMenu();const menu=document.createElement('div');menu.className='ctx-menu';const x=Math.min(ev.clientX,window.innerWidth-160);const y=Math.min(ev.clientY,window.innerHeight-200);menu.style.left=x+'px';menu.style.top=y+'px';let items=`<div class="ctx-item" onclick="replyToMsg('${msgId}')"><span class="ctx-icon">↩️</span>引用</div><div class="ctx-item" onclick="copyMsg('${msgId}')"><span class="ctx-icon">📋</span>复制</div><div class="ctx-item" onclick="forwardMsg('${msgId}')"><span class="ctx-icon">↗️</span>转发</div>`;if(senderId===S.user?.id)items+=`<div class="ctx-item danger" onclick="deleteMsg('${msgId}')"><span class="ctx-icon">🗑️</span>删除</div>`;menu.innerHTML=items;document.body.appendChild(menu);ctxMenu=menu;setTimeout(()=>document.addEventListener('click',removeCtxMenu,{once:true}),10)}
+function removeCtxMenu(){if(ctxMenu){ctxMenu.remove();ctxMenu=null}}
+let replyToId='';function replyToMsg(msgId){replyToId=msgId;const el=document.querySelector(`[data-id="${msgId}"] .msg-bubble`);if(el){const name=document.querySelector(`[data-id="${msgId}"] .msg-name`)?.textContent||'';$('msgInput').placeholder=`回复 ${name}: ${el.textContent.slice(0,30)}...`;$('msgInput').focus()}}
+function copyMsg(msgId){const el=document.querySelector(`[data-id="${msgId}"] .msg-bubble`);if(el){navigator.clipboard?.writeText(el.textContent);toast('已复制')}}
+async function deleteMsg(msgId){try{await api(`/api/messages/${msgId}`,{method:'DELETE'});const el=document.querySelector(`[data-id="${msgId}"]`);if(el){el.style.transition='all .3s';el.style.opacity='0';el.style.transform='scale(.8)';setTimeout(()=>el.remove(),300)}toast('已删除')}catch(e){toast(e.message)}}
+async function forwardMsg(msgId){const target=prompt('转发到群ID:');if(!target)return;try{await api('/api/messages/forward',{method:'POST',body:JSON.stringify({message_id:msgId,target_group_id:target})});toast('已转发')}catch(e){toast(e.message)}}
+
+/* ==================== SEND ==================== */
+async function sendText(){const input=$('msgInput');const text=input.value.trim();if(!text||!S.curConv)return;input.value='';input.style.height='auto';input.placeholder='消息';$('sendBtn').disabled=true;const body={group_id:S.curConv,content:text,msg_type:'text',reply_to:replyToId};replyToId='';try{const d=await api('/api/messages',{method:'POST',body:JSON.stringify(body)});appendMsg({id:d.id,sender_id:S.user.id,sender_name:S.user.nickname,sender_avatar:S.user.avatar,content:text,msg_type:'text',is_agent:false,created_at:d.created_at,reply_to:null,media_url:''})}catch(e){toast('发送失败')}$('sendBtn').disabled=false;input.focus()}
+function onKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendText()}setTimeout(()=>autoGrow(e.target),0)}
+function autoGrow(el){el.style.height='auto';el.style.height=Math.min(el.scrollHeight,120)+'px'}
+
+/* ==================== IMAGE ==================== */
+async function sendImage(input){const file=input.files[0];if(!file||!S.curConv)return;const form=new FormData();form.append('file',file);try{const r=await fetch('/api/upload/image',{method:'POST',headers:{'Authorization':'***'+S.token},body:form});const d=await r.json();await api('/api/messages',{method:'POST',body:JSON.stringify({group_id:S.curConv,content:'[图片]',msg_type:'image',media_url:d.url})});appendMsg({id:Date.now(),sender_id:S.user.id,sender_name:S.user.nickname,sender_avatar:S.user.avatar,content:'[图片]',msg_type:'image',is_agent:false,created_at:Date.now()/1000,media_url:d.url})}catch(e){toast('上传失败')}input.value=''}
+
+/* ==================== VOICE ==================== */
+let recorder=null,chunks=[];function toggleVoice(){S.voiceMode=!S.voiceMode;$('msgInput').style.display=S.voiceMode?'none':'block';$('recordBtn').style.display=S.voiceMode?'block':'none';$('sendBtn').style.display=S.voiceMode?'none':'block';$('voiceToggle').style.color=S.voiceMode?'var(--green)':''}
+async function recStart(){try{const stream=await navigator.mediaDevices.getUserMedia({audio:true});recorder=new MediaRecorder(stream,{mimeType:'audio/webm;codecs=opus'});chunks=[];recorder.ondataavailable=e=>chunks.push(e.data);recorder.start();$('recordBtn').classList.add('recording');$('recordBtn').textContent='松开 结束'}catch(e){toast('需要麦克风权限')}}
+async function recStop(){if(!recorder||recorder.state!=='recording')return;$('recordBtn').classList.remove('recording');$('recordBtn').textContent='按住 说话';recorder.stop();recorder.stream.getTracks().forEach(t=>t.stop());recorder.onstop=async()=>{const blob=new Blob(chunks,{type:'audio/webm'});const form=new FormData();form.append('file',blob,'voice.webm');try{const r=await fetch('/api/voice/upload',{method:'POST',headers:{'Authorization':'***'+S.token},body:form});const d=await r.json();await api('/api/messages',{method:'POST',body:JSON.stringify({group_id:S.curConv,content:'[语音消息]',msg_type:'voice',media_url:d.url})});appendMsg({id:Date.now(),sender_id:S.user.id,sender_name:S.user.nickname,sender_avatar:S.user.avatar,content:'[语音消息]',msg_type:'voice',is_agent:false,created_at:Date.now()/1000,media_url:d.url})}catch(e){toast('发送失败')}}}
+function playVoice(el,url){const audio=new Audio(url);el.classList.add('voice-playing');audio.play();audio.onended=()=>el.classList.remove('voice-playing')}
+
+/* ==================== EMOJI ==================== */
+const EMOJIS='😀 😂 🤣 😊 😍 🥰 😘 😋 🤔 😅 😢 😭 😡 🥺 😴 🙏 👍 👎 ❤️ 💔 🎉 🎊 💪 👏 🤝 ✌️ 💐 🌹 🎂 🍰 🍜 🍲 🎣 ♟️ 📰 💊 🌞 🌙 ⭐ 🎵 📸 🎁'.split(' ');
+function toggleEmoji(){const p=$('emojiPanel');if(!p.innerHTML)p.innerHTML=EMOJIS.map(e=>`<span class="emoji-item" onclick="insertEmoji('${e}')">${e}</span>`).join('');p.classList.toggle('show')}
+function insertEmoji(e){$('msgInput').value+=e;$('msgInput').focus()}
+
+/* ==================== CONTACTS ==================== */
+async function loadContacts(){let html='';try{const reqs=await api('/api/friends/requests');if(reqs.length){html+=`<div class="sec-title">好友请求 (${reqs.length})</div>`;html+=`<div class="contact-item ripple" onclick="showFriendReqs()" style="color:var(--red)"><div class="contact-av">📩</div><div class="contact-name">新的朋友</div><span class="contact-badge">${reqs.length}</span></div>`}}catch(e){}
+html+='<div class="sec-title">数字人</div>';for(const a of S.agents)html+=`<div class="contact-item ripple" onclick="showAgentDetail('${a.id}')"><div class="contact-av">${a.avatar||'🤖'}</div><div class="contact-name">${esc(a.name)}</div><span class="contact-badge">AI</span></div>`;
+html+='<div class="sec-title">好友</div>';if(S.friends.length){for(const f of S.friends){const online=f.status==='online';html+=`<div class="contact-item ripple" onclick="showUserProfile('${f.id}')"><div class="contact-av">${f.avatar}${online?'<div class="online-dot" style="position:absolute;bottom:1px;right:1px;width:8px;height:8px;border-radius:50%;background:var(--green);border:2px solid var(--card)"></div>':''}</div><div class="contact-name">${esc(f.nickname)}</div></div>`}}else{html+=`<div class="contact-item ripple" onclick="showModal('addFriendModal')"><div class="contact-av">➕</div><div class="contact-name" style="color:var(--link)">添加好友</div></div>`}
+html+='<div class="sec-title">群聊</div>';const groups=S.convs.filter(c=>c.conv_type==='group');for(const g of groups)html+=`<div class="contact-item ripple" onclick="openConv('${g.id}','${esc(g.name)}','${esc(g.avatar||'👥')}','group')"><div class="contact-av">${g.avatar||'👥'}</div><div class="contact-name">${esc(g.name)} (${g.member_count||0})</div></div>`;
+$('panelContact').innerHTML=html}
+
+/* ==================== FRIEND REQUESTS ==================== */
+async function showFriendReqs(){pushPage('friendReqPage');const body=$('friendReqBody');try{const reqs=await api('/api/friends/requests');if(!reqs.length){body.innerHTML='<div class="empty"><span class="icon">📭</span><p>暂无好友请求</p></div>';return}body.innerHTML=reqs.map(r=>`<div class="fr-item"><div class="av">${r.avatar}</div><div class="info"><div class="name">${esc(r.nickname)}</div><div class="msg">${esc(r.message||'请求加你为好友')}</div></div><div class="fr-actions"><button class="fr-accept" onclick="acceptFriend('${r.id}')">接受</button><button class="fr-reject" onclick="rejectFriend('${r.id}')">拒绝</button></div></div>`).join('')}catch(e){body.innerHTML='<div class="empty"><p>加载失败</p></div>'}}
+async function acceptFriend(rid){try{await api(`/api/friends/requests/${rid}/accept`,{method:'POST'});toast('已添加好友');await loadFriends();await loadConvs();showFriendReqs()}catch(e){toast(e.message)}}
+async function rejectFriend(rid){try{await api(`/api/friends/requests/${rid}/reject`,{method:'POST'});toast('已拒绝');showFriendReqs()}catch(e){toast(e.message)}}
+async function loadFriends(){try{S.friends=await api('/api/friends')}catch(e){}}
+
+/* ==================== USER PROFILE ==================== */
+async function showUserProfile(userId){pushPage('userProfilePage');const body=$('userProfileBody');try{const u=await api(`/api/users/${userId}`);const isFriend=u.friend_status==='accepted';let actions='';if(isFriend)actions=`<button class="modal-btn modal-btn-ok" onclick="startPrivateChat('${u.id}')">发消息</button>`;else if(u.friend_status==='none')actions=`<button class="modal-btn modal-btn-ok" onclick="sendFriendReq('${u.id}')">添加好友</button>`;else actions=`<button class="modal-btn" style="background:var(--bg);color:var(--txt2)">请求已发送</button>`;body.innerHTML=`<div class="detail-header"><div class="av" style="font-size:64px">${u.avatar}</div><h2>${esc(u.nickname)}</h2><p>用户名: ${esc(u.username)}</p><p style="margin-top:4px;color:${u.status==='online'?'var(--green)':'var(--txt3)'}">${u.status==='online'?'● 在线':'○ 离线'}</p></div><div style="padding:16px">${actions}</div>`}catch(e){body.innerHTML='<div class="empty"><p>加载失败</p></div>'}}
+async function sendFriendReq(userId){try{await api('/api/friends/request',{method:'POST',body:JSON.stringify({to_user_id:userId,message:'我是你的家人'})});toast('好友请求已发送')}catch(e){toast(e.message)}}
+async function startPrivateChat(userId){try{const d=await api(`/api/conversations/private?to_user_id=${userId}`,{method:'POST'});const u=await api(`/api/users/${userId}`);await loadConvs();openConv(d.id,u.nickname,u.avatar,'private')}catch(e){toast(e.message)}}
+
+/* ==================== GROUP DETAIL ==================== */
+async function openChatDetail(){if(S.curConvType==='private'){pushPage('groupDetailPage');$('groupDetailBody').innerHTML=`<div class="detail-header"><div class="av" style="font-size:64px">${S.curConvAv}</div><h2>${esc(S.curConvName)}</h2><p>私聊</p></div>`;return}
+pushPage('groupDetailPage');const body=$('groupDetailBody');try{const[group,members]=await Promise.all([api(`/api/groups/${S.curConv}`),api(`/api/groups/${S.curConv}/members`)]);let membersHtml=members.map(m=>`<div class="member-cell" onclick="${m.is_agent?`showAgentDetail('${m.id}')`:`showUserProfile('${m.id}')`}"><div class="av">${m.avatar}${m.muted?'🔇':''}</div><div class="name">${esc(m.name)}</div></div>`).join('');body.innerHTML=`<div class="detail-header"><div class="av" style="font-size:64px">${S.curConvAv}</div><h2>${esc(group.name)}</h2><p>${esc(group.description||'')}</p></div>${group.notice?`<div class="detail-section"><div class="detail-row"><div class="label">群公告</div><div class="value">${esc(group.notice)}</div></div></div>`:''}<div class="detail-section"><div class="sec-title">群成员 (${members.length})</div><div class="member-grid">${membersHtml}</div></div><div class="detail-section"><div class="profile-row" onclick="openRefinePage()"><span class="icon">🧪</span><span class="label">炼化数字人</span><span class="arrow">›</span></div></div>`}catch(e){body.innerHTML='<div class="empty"><p>加载失败</p></div>'}}
+
+/* ==================== AGENT DETAIL ==================== */
+function showAgentDetail(agentId){const agent=S.agents.find(a=>a.id===agentId);if(!agent)return;pushPage('userProfilePage');$('userProfileBody').innerHTML=`<div class="detail-header"><div class="av" style="font-size:64px">${agent.avatar||'🤖'}</div><h2>${esc(agent.name)}</h2><p>AI 数字人</p><p style="margin-top:4px;font-size:13px;color:var(--txt2)">情绪: ${agent.emotion||'平静'}</p></div><div class="detail-section"><div class="detail-row"><div class="label">价值观</div><div class="value">${(agent.soul_values||[]).join('、')||'待完善'}</div></div></div><div style="padding:16px"><button class="modal-btn modal-btn-ok" onclick="openRefinePage('${agentId}')">🧪 炼化</button><button class="modal-btn" style="background:var(--bg)" onclick="openAgentDash('${agentId}')">📊 仪表盘</button><button class="modal-btn" style="background:var(--bg);margin-top:8px" onclick="viewAgentMemories('${agentId}')">🧠 查看记忆</button></div>`}
+async function viewAgentMemories(agentId){try{const memories=await api(`/api/agents/${agentId}/memories`);alert(memories.length?memories.map(m=>`• ${m.content}`).join('\n'):'暂无记忆')}catch(e){toast('加载失败')}}
+
+/* ==================== REFINEMENT PAGE ==================== */
+function openRefinePage(agentId){agentId=agentId||S.user?.agent_id||'';pushPage('refinePage');const body=$('refineBody');body.innerHTML=`<div class="refine-card"><h3>📝 文字炼化</h3><p>粘贴聊天记录、自我介绍，AI提取性格特征</p><textarea id="refineText" rows="5" placeholder="粘贴聊天记录或自我介绍..." style="width:100%;margin-top:8px;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:14px;resize:vertical"></textarea><input id="refineAgentId" type="hidden" value="${agentId}"><button class="modal-btn modal-btn-ok" style="margin-top:8px" onclick="doRefineText()">开始炼化</button></div><div class="refine-card"><h3>🎤 语音炼化</h3><p>上传语音样本，AI分析音色和说话习惯</p><input type="file" id="refineVoiceFile" accept="audio/*" style="margin-top:8px"><button class="modal-btn modal-btn-ok" style="margin-top:8px" onclick="doRefineVoice()">上传分析</button></div><div class="refine-card"><h3>🎬 视频炼化</h3><p>上传视频资料，AI分析表达习惯和肢体语言</p><input type="file" id="refineVideoFile" accept="video/*" style="margin-top:8px"><button class="modal-btn modal-btn-ok" style="margin-top:8px" onclick="doRefineVideo()">上传分析</button></div><div class="refine-card"><h3>💬 聊天记录批量炼化</h3><p>粘贴大量聊天记录，深度分析说话风格</p><textarea id="refineChatBatch" rows="6" placeholder="粘贴微信/QQ聊天记录..." style="width:100%;margin-top:8px;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:14px;resize:vertical"></textarea><button class="modal-btn modal-btn-ok" style="margin-top:8px" onclick="doRefineChat()">批量炼化</button></div><div class="refine-card"><h3>🔗 关系图谱</h3><p>定义数字人与其他人的关系</p><div id="relGraphArea"></div><button class="modal-btn" style="background:var(--bg);margin-top:8px" onclick="loadRelGraph('${agentId}')">加载关系图</button></div>`;loadRelGraph(agentId)}
+async function doRefineText(){const text=$('refineText').value.trim();const agentId=$('refineAgentId').value;if(!text)return toast('请输入内容');if(!agentId)return toast('无关联Agent');try{toast('炼化中...');const d=await api('/api/agent/refine/text',{method:'POST',body:JSON.stringify({agent_id:agentId,text,source:'text'})});toast(d.message||'炼化完成');$('refineText').value=''}catch(e){toast(e.message)}}
+async function doRefineVoice(){const file=$('refineVoiceFile').files[0];const agentId=$('refineAgentId').value;if(!file)return toast('请选择语音文件');const form=new FormData();form.append('file',file);form.append('agent_id',agentId);try{toast('上传分析中...');const r=await fetch('/api/agent/refine/voice',{method:'POST',headers:{'Authorization':'***'+S.token},body:form});const d=await r.json();toast(d.message||'语音炼化完成')}catch(e){toast('上传失败')}}
+async function doRefineVideo(){const file=$('refineVideoFile').files[0];const agentId=$('refineAgentId').value;if(!file)return toast('请选择视频文件');const form=new FormData();form.append('file',file);form.append('agent_id',agentId);try{toast('上传分析中...');const r=await fetch('/api/agent/refine/video',{method:'POST',headers:{'Authorization':'***'+S.token},body:form});const d=await r.json();toast(d.message||'视频炼化完成')}catch(e){toast('上传失败')}}
+async function doRefineChat(){const text=$('refineChatBatch').value.trim();const agentId=$('refineAgentId').value;if(!text)return toast('请输入聊天记录');try{toast('深度炼化中...');const d=await api('/api/agent/refine/chat',{method:'POST',body:JSON.stringify({agent_id:agentId,text,source:'chat_history'})});toast(d.message||'炼化完成');$('refineChatBatch').value=''}catch(e){toast(e.message)}}
+async function loadRelGraph(agentId){if(!agentId)return;try{const d=await api(`/api/agents/${agentId}/relationships`);const el=$('relGraphArea');if(!d.relationships||!Object.keys(d.relationships).length){el.innerHTML='<p style="color:var(--txt2);padding:8px">暂无关系数据</p>';return}
+let html='<div style="display:flex;flex-wrap:wrap;gap:8px;padding:8px">';for(const[rid,info]of Object.entries(d.relationships)){if(typeof info==='object')html+=`<div class="relation-node"><div class="av">${info.avatar||'👤'}</div><div class="name">${esc(info.name||rid)}</div><div style="font-size:10px;color:var(--green)">${esc(info.relation||'')}</div></div>`}html+='</div>';el.innerHTML=html}catch(e){}}
+
+/* ==================== AGENT DASHBOARD ==================== */
+async function openAgentDash(agentId){pushPage('agentDashPage');const body=$('agentDashBody');try{const[agent,memories]=await Promise.all([api('/api/agents'),api(`/api/agents/${agentId||S.user?.agent_id}/memories`)]);const a=agent.find(x=>x.id===(agentId||S.user?.agent_id));if(!a){body.innerHTML='<div class="empty"><p>未找到数字人</p></div>';return}
+const memCount=memories.length;const longMem=memories.filter(m=>m.type==='long').length;const coreMem=memories.filter(m=>m.type==='core').length;
+body.innerHTML=`<div class="detail-header"><div class="av" style="font-size:64px">${a.avatar||'🤖'}</div><h2>${esc(a.name)}</h2><p>数字人仪表盘</p></div><div class="dash-stat"><div class="stat-card"><div class="stat-num">${memCount}</div><div class="stat-label">总记忆</div></div><div class="stat-card"><div class="stat-num">${longMem}</div><div class="stat-label">长期记忆</div></div><div class="stat-card"><div class="stat-num">${coreMem}</div><div class="stat-label">核心记忆</div></div></div><div class="detail-section"><div class="sec-title">性格特征</div><div style="padding:12px">${(a.identity?.traits||[]).map(t=>`<span class="trait-chip">${esc(t)}</span>`).join('')||'<span style="color:var(--txt2)">待炼化</span>'}</div></div><div class="detail-section"><div class="sec-title">价值观</div><div style="padding:12px">${(a.soul_values||[]).map(v=>`<span class="trait-chip">${esc(v)}</span>`).join('')||'<span style="color:var(--txt2)">待完善</span>'}</div></div><div class="detail-section"><div class="sec-title">最近记忆</div>${memories.slice(0,10).map(m=>`<div class="detail-row"><div class="value" style="font-size:13px">${esc(m.content.slice(0,80))}</div></div>`).join('')||'<div style="padding:16px;color:var(--txt2)">暂无记忆</div>'}</div>`}catch(e){body.innerHTML='<div class="empty"><p>加载失败</p></div>'}}
+
+/* ==================== PROFILE ==================== */
+function renderProfile(){const u=S.user||{};$('panelProfile').innerHTML=`<div class="profile-hd"><div class="profile-av">${u.avatar||'😀'}</div><div class="profile-info"><h2>${esc(u.nickname||u.username||'-')}</h2><p>微信号：${esc(u.email||'-')}</p></div></div><div class="profile-section"><div class="profile-row" onclick="showModal('editProfileModal')"><span class="icon">✏️</span><span class="label">编辑资料</span><span class="arrow">›</span></div><div class="profile-row" onclick="showModal('addFriendModal')"><span class="icon">➕</span><span class="label">添加好友</span><span class="arrow">›</span></div><div class="profile-row" onclick="showFriendReqs()"><span class="icon">📩</span><span class="label">好友请求</span><span class="arrow">›</span></div><div class="profile-row" onclick="openRefinePage()"><span class="icon">🧪</span><span class="label">炼化数字人</span><span class="arrow">›</span></div><div class="profile-row" onclick="openAgentDash()"><span class="icon">📊</span><span class="label">数字人仪表盘</span><span class="arrow">›</span></div><div class="profile-row" onclick="toggleDark()"><span class="icon">🌙</span><span class="label">深色模式</span><span class="val">${S.darkMode?'开':'关'}</span><span class="arrow">›</span></div><div class="profile-row"><span class="icon">⚙️</span><span class="label">设置</span><span class="arrow">›</span></div></div><button class="logout-btn" onclick="doLogout()">退出登录</button>`}
+function toggleDark(){S.darkMode=!S.darkMode;document.body.classList.toggle('dark',S.darkMode);localStorage.setItem('fc_dark',S.darkMode?'1':'0');renderProfile()}
+async function doEditProfile(){const nickname=$('editNick').value.trim(),avatar=$('editAvatar').value.trim(),phone=$('editPhone').value.trim();try{await api('/api/me',{method:'PUT',body:JSON.stringify({nickname,avatar,phone})});if(nickname)S.user.nickname=nickname;if(avatar)S.user.avatar=avatar;localStorage.setItem('fc_user',JSON.stringify(S.user));closeModal($('editProfileModal'));renderProfile();toast('已保存')}catch(e){toast(e.message)}}
+
+/* ==================== AGENTS ==================== */
+async function loadAgents(){try{S.agents=await api('/api/agents')}catch(e){}}
+
+/* ==================== SEARCH ==================== */
+async function doSearch(){const q=$('searchInput').value.trim();if(!q)return;const el=$('searchResults');el.innerHTML='<p style="color:var(--txt2)">搜索中...</p>';try{const users=await api(`/api/users/search/${encodeURIComponent(q)}`);let html='';if(users.length){html+='<p style="font-size:13px;color:var(--txt2);margin-bottom:8px">用户</p>';html+=users.map(u=>`<div class="contact-item" onclick="closeModal($('searchModal'));showUserProfile('${u.id}')"><div class="contact-av">${u.avatar}</div><div class="contact-name">${esc(u.nickname)}</div></div>`).join('')}if(S.curConv){const msgs=await api(`/api/messages/search/${S.curConv}?q=${encodeURIComponent(q)}`);if(msgs.length){html+='<p style="font-size:13px;color:var(--txt2);margin:12px 0 8px">消息</p>';html+=msgs.map(m=>`<div class="contact-item"><div style="flex:1;overflow:hidden"><div style="font-size:14px">${esc(m.sender_name)}</div><div style="font-size:13px;color:var(--txt2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.content)}</div></div></div>`).join('')}}el.innerHTML=html||'<p style="color:var(--txt2)">无结果</p>'}catch(e){el.innerHTML='<p style="color:var(--red)">搜索失败</p>'}}
+async function doSearchFriend(){const q=$('addFriendInput').value.trim();if(!q)return;const el=$('addFriendResults');el.innerHTML='<p style="color:var(--txt2)">搜索中...</p>';try{const users=await api(`/api/users/search/${encodeURIComponent(q)}`);if(!users.length){el.innerHTML='<p style="color:var(--txt2)">未找到用户</p>';return}el.innerHTML=users.map(u=>`<div class="contact-item"><div class="contact-av">${u.avatar}</div><div class="contact-name">${esc(u.nickname)} (${esc(u.username)})</div><button class="fr-accept" onclick="sendFriendReqFromSearch('${u.id}')">添加</button></div>`).join('')}catch(e){el.innerHTML='<p style="color:var(--red)">搜索失败</p>'}}
+async function sendFriendReqFromSearch(userId){try{await api('/api/friends/request',{method:'POST',body:JSON.stringify({to_user_id:userId})});toast('好友请求已发送')}catch(e){toast(e.message)}}
+
+/* ==================== GROUP ==================== */
+async function doCreateGroup(){const name=$('newGroupName').value.trim();if(!name)return;try{await api('/api/groups',{method:'POST',body:JSON.stringify({name,description:$('newGroupDesc').value})});closeModal($('createGroupModal'));$('newGroupName').value='';$('newGroupDesc').value='';await loadConvs();toast('群聊已创建')}catch(e){toast(e.message)}}
+
+/* ==================== WEBSOCKET ==================== */
+function connectWS(){if(!S.token)return;const proto=location.protocol==='https:'?'wss':'ws';const ws=new WebSocket(`${proto}://${location.host}/ws?token=***
+ws.onopen=()=>{S.ws=ws};
+ws.onmessage=e=>{try{const msg=JSON.parse(e.data);if(msg.type==='message'&&msg.data){const d=msg.data;if(d.group_id===S.curConv){appendMsg(d);if(S.ws.readyState===1)S.ws.send(JSON.stringify({type:'read',group_id:d.group_id}))}const conv=S.convs.find(c=>c.id===d.group_id);if(conv){conv.last_message=d.content;conv.last_time=d.created_at;if(d.group_id!==S.curConv)conv.unread_count=(conv.unread_count||0)+1}else{loadConvs()}renderConvs();updateBadges()}else if(msg.type==='typing'&&msg.data){if(msg.data.group_id===S.curConv)showTyping(msg.data.agent_name,msg.data.agent_avatar)}else if(msg.type==='friend_request'){toast('收到好友请求')}else if(msg.type==='friend_accepted'){toast('好友请求已通过');loadFriends();loadConvs()}else if(msg.type==='friend_online'){const f=S.friends.find(x=>x.id===msg.data.user_id);if(f)f.status='online';renderConvs()}else if(msg.type==='friend_offline'){const f=S.friends.find(x=>x.id===msg.data.user_id);if(f)f.status='offline';renderConvs()}else if(msg.type==='message_deleted'){const el=document.querySelector(`[data-id="${msg.data.message_id}"]`);if(el)el.remove()}}catch(err){}};
+ws.onclose=()=>setTimeout(connectWS,3000)}
+
+/* ==================== UTILS ==================== */
+function esc(s){if(!s)return'';const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+function fmtTime(ts){if(!ts)return'';const d=new Date(ts*1000),now=new Date();const hm=d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');if(d.toDateString()===now.toDateString())return hm;const diff=(now-d)/(1000*86400);if(diff<2)return'昨天 '+hm;return(d.getMonth()+1)+'/'+d.getDate()+' '+hm}
+function fmtDate(ts){const d=new Date(ts*1000),now=new Date();if(d.toDateString()===now.toDateString())return'今天';const y=new Date(now);y.setDate(y.getDate()-1);if(d.toDateString()===y.toDateString())return'昨天';return`${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日`}
+
+/* ==================== INIT ==================== */
+(async()=>{if(S.token&&S.user){try{await api('/api/me');enterApp()}catch{doLogout()}}else{showPage('loginPage')}})();
+</script>
+</body>
+</html>
