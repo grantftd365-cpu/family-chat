@@ -9,11 +9,13 @@ from pathlib import Path
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends, Query, UploadFile, File
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends, Query, UploadFile, File, Request
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from loguru import logger
+import time as _time
 
 from .models.database import init_db, get_db, gen_id, now
 from .core.auth import hash_password, verify_password, create_token, get_current_user, get_ws_user
@@ -23,6 +25,72 @@ from .agents.core import AgentManager
 # ==================== Lifespan ====================
 
 agent_manager: AgentManager = None
+
+
+async def _proactive_scheduler():
+    """定时检查 Agent 主动发言"""
+    while True:
+        await asyncio.sleep(300)  # Check every 5 minutes
+        try:
+            if not agent_manager:
+                continue
+            db = await get_db()
+            try:
+                async with db.execute(
+                    "SELECT id, name, proactive_config FROM agents WHERE enabled=1"
+                ) as cursor:
+                    async for row in cursor:
+                        cfg = json.loads(row[2]) if row[2] else {}
+                        if not cfg.get("enabled"):
+                            continue
+                        freq = cfg.get("frequency_hours", 6)
+                        last = cfg.get("last_proactive", 0)
+                        if _time.time() - last < freq * 3600:
+                            continue
+                        agent = agent_manager.get_agent(row[0])
+                        if not agent:
+                            continue
+                        # Pick a random group
+                        async with db.execute(
+                            "SELECT group_id FROM group_members WHERE user_id=? ORDER BY RANDOM() LIMIT 1",
+                            (row[0],)
+                ) as gc:
+                            g_row = await gc.fetchone()
+                            if not g_row:
+                                continue
+                        topics = cfg.get("topics", [])
+                        topic = topics[int(_time.time()) % len(topics)] if topics else "跟家人打个招呼"
+                        try:
+                            reply = await agent.think(f"[{topic}]", "系统", True)
+                            if reply:
+                                from .models.database import gen_id as _gid
+                                msg_id = _gid()
+                                ts = _time.time()
+                                await db.execute(
+                                    "INSERT INTO messages (id,group_id,sender_id,sender_name,content,msg_type,is_agent,created_at) VALUES (?,?,?,?,?,?,?,?)",
+                                    (msg_id, g_row[0], row[0], row[1], reply, "text", 1, ts)
+                                )
+                                await db.execute(
+                                    "UPDATE agents SET proactive_config=json_set(proactive_config,'$.last_proactive',?) WHERE id=?",
+                                    (ts, row[0])
+                                )
+                                await db.commit()
+                                await ws_manager.broadcast_to_group(g_row[0], {
+                                    "type": "message",
+                                    "data": {
+                                        "id": msg_id, "group_id": g_row[0],
+                                        "sender_id": row[0], "sender_name": row[1],
+                                        "content": reply, "msg_type": "text",
+                                        "is_agent": True, "created_at": ts,
+                                        "reactions": [],
+                                    }
+                                })
+                        except Exception as e:
+                            logger.error(f"主动发言失败 [{row[1]}]: {e}")
+            finally:
+                await db.close()
+        except Exception as e:
+            logger.error(f"主动发言调度器异常: {e}")
 
 
 @asynccontextmanager
@@ -49,11 +117,52 @@ async def lifespan(app: FastAPI):
     logger.info("🏠 FamilyChat v2.0 已启动！")
     logger.info("🌐 访问 http://localhost:8000")
     logger.info("=" * 50)
+
+    # Start proactive speaking scheduler
+    proactive_task = asyncio.create_task(_proactive_scheduler())
+
     yield
+
+    proactive_task.cancel()
     logger.info("👋 FamilyChat 关闭")
 
 
 app = FastAPI(title="FamilyChat", lifespan=lifespan)
+
+# Security middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Simple rate limiter
+_rate_limit_store: dict[str, list[float]] = {}
+RATE_LIMIT_WINDOW = 60  # seconds
+RATE_LIMIT_MAX = 120    # requests per window
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    client_ip = request.client.host if request.client else "unknown"
+    now_ts = _time.time()
+    if client_ip not in _rate_limit_store:
+        _rate_limit_store[client_ip] = []
+    # Clean old entries
+    _rate_limit_store[client_ip] = [t for t in _rate_limit_store[client_ip] if now_ts - t < RATE_LIMIT_WINDOW]
+    if len(_rate_limit_store[client_ip]) >= RATE_LIMIT_MAX:
+        return JSONResponse({"detail": "请求过于频繁"}, status_code=429)
+    _rate_limit_store[client_ip].append(now_ts)
+    return await call_next(request)
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    return response
 
 # 静态文件
 frontend_dir = Path(__file__).parent.parent.parent / "frontend"
@@ -61,7 +170,7 @@ if frontend_dir.exists():
     app.mount("/static", StaticFiles(directory=str(frontend_dir)), name="static")
 
 # 注册路由
-from .routes import auth, chat, friends, moments, agents, search, notifications
+from .routes import auth, chat, friends, moments, agents, search, notifications, system
 app.include_router(auth.router)
 app.include_router(chat.router)
 app.include_router(friends.router)
@@ -69,6 +178,7 @@ app.include_router(moments.router)
 app.include_router(agents.router)
 app.include_router(search.router)
 app.include_router(notifications.router)
+app.include_router(system.router)
 
 
 async def ensure_defaults(db, agent_mgr: AgentManager):

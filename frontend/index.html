@@ -412,6 +412,18 @@ input,textarea,button { font-family:inherit; font-size:16px; }
       <span class="label">🧪 炼化数字人</span>
       <span class="arrow" style="color:var(--text-light)">›</span>
     </div>
+    <div class="settings-row" onclick="showModal('editProfileModal')" style="cursor:pointer">
+      <span class="label">👤 编辑资料</span>
+      <span class="arrow" style="color:var(--text-light)">›</span>
+    </div>
+    <div class="settings-row" onclick="loadStats()" style="cursor:pointer">
+      <span class="label">📊 系统统计</span>
+      <span class="arrow" style="color:var(--text-light)">›</span>
+    </div>
+    <div class="settings-row" onclick="createBackup()" style="cursor:pointer">
+      <span class="label">💾 创建备份</span>
+      <span class="arrow" style="color:var(--text-light)">›</span>
+    </div>
     <div class="settings-row">
       <span class="label">版本</span>
       <span class="desc">v2.0.0</span>
@@ -520,6 +532,32 @@ input,textarea,button { font-family:inherit; font-size:16px; }
     <h3>📌 置顶消息</h3>
     <div id="pinnedList"></div>
     <button class="modal-btn modal-btn-cancel" style="margin-top:16px" onclick="closeModal($('pinnedModal'))">关闭</button>
+  </div>
+</div>
+
+<!-- Edit Profile -->
+<div id="editProfileModal" class="modal-bg" onclick="if(event.target===this)closeModal(this)">
+  <div class="modal-box">
+    <h3>👤 编辑资料</h3>
+    <input id="editNick" placeholder="昵称">
+    <input id="editSignature" placeholder="签名">
+    <select id="editGender" style="width:100%;padding:14px;border:0.5px solid var(--border);border-radius:6px;font-size:16px;margin-bottom:12px;background:var(--card);color:var(--text);">
+      <option value="">性别</option>
+      <option value="male">男</option>
+      <option value="female">女</option>
+    </select>
+    <input id="editRegion" placeholder="地区">
+    <button class="modal-btn modal-btn-ok" onclick="doEditProfile()">保存</button>
+    <button class="modal-btn modal-btn-cancel" onclick="closeModal($('editProfileModal'))">取消</button>
+  </div>
+</div>
+
+<!-- Stats -->
+<div id="statsModal" class="modal-bg" onclick="if(event.target===this)closeModal(this)">
+  <div class="modal-box">
+    <h3>📊 系统统计</h3>
+    <div id="statsContent"></div>
+    <button class="modal-btn modal-btn-cancel" style="margin-top:16px" onclick="closeModal($('statsModal'))">关闭</button>
   </div>
 </div>
 
@@ -1299,6 +1337,45 @@ function fmtTime(ts) {
   const yesterday = new Date(now); yesterday.setDate(yesterday.getDate()-1);
   if (d.toDateString()===yesterday.toDateString()) return '昨天 '+hm;
   return (d.getMonth()+1)+'/'+d.getDate()+' '+hm;
+}
+
+// ==================== Edit Profile ====================
+async function doEditProfile() {
+  const nickname = $('editNick').value.trim();
+  const signature = $('editSignature').value.trim();
+  const gender = $('editGender').value;
+  const region = $('editRegion').value.trim();
+  try {
+    await api('/api/me', {method:'PUT', body:JSON.stringify({nickname, signature, gender, region})});
+    closeModal($('editProfileModal'));
+    const me = await api('/api/me');
+    S.user = {...S.user, ...me};
+    localStorage.setItem('fc_user', JSON.stringify(S.user));
+    renderProfile();
+    toast('资料已更新');
+  } catch(e) { toast(e.message); }
+}
+
+async function loadStats() {
+  try {
+    const s = await api('/api/system/stats');
+    const rows = [
+      ['用户', s.total_users], ['数字人', s.total_agents],
+      ['消息', s.total_messages], ['群组', s.total_groups],
+      ['朋友圈', s.total_moments], ['记忆', s.total_memories]
+    ];
+    $('statsContent').innerHTML = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:12px 0;">' +
+      rows.map(([k,v]) => `<div style="text-align:center"><div style="font-size:28px;font-weight:700;color:var(--green)">${v}</div><div style="font-size:13px;color:var(--text-sub)">${k}</div></div>`).join('') +
+      `</div><div style="text-align:center;padding:8px;font-size:13px;color:var(--text-sub)">数据库: ${s.db_size_mb} MB</div>`;
+    showModal('statsModal');
+  } catch(e) { toast(e.message); }
+}
+
+async function createBackup() {
+  try {
+    const r = await api('/api/system/backup', {method:'POST'});
+    toast('备份已创建');
+  } catch(e) { toast(e.message); }
 }
 
 // ==================== Init ====================
