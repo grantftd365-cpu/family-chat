@@ -2,344 +2,429 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>FamilyChat</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏠</text></svg>">
 <style>
+/* ===== CSS Variables & Dark Mode ===== */
 :root {
-  --green: #07C160;
-  --green-dark: #06AD56;
-  --bg: #EDEDED;
-  --bg-dark: #D9D9D9;
-  --card: #FFFFFF;
-  --text: #111111;
-  --text-sub: #888888;
-  --text-light: #B2B2B2;
-  --border: #E6E6E6;
-  --danger: #FA5151;
-  --link: #576B95;
-  --chat-right: #95EC69;
-  --chat-left: #FFFFFF;
-  --safe-top: env(safe-area-inset-top, 0px);
-  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --green:#07C160; --green-dark:#06AD56; --green-light:#95EC69;
+  --bg:#EDEDED; --bg-dark:#D9D9D9; --card:#FFFFFF; --card-hover:#F7F7F7;
+  --text:#111111; --text-sub:#888888; --text-light:#B2B2B2;
+  --border:#E6E6E6; --danger:#FA5151; --link:#576B95;
+  --chat-right:#95EC69; --chat-left:#FFFFFF;
+  --safe-top:env(safe-area-inset-top,0px); --safe-bottom:env(safe-area-inset-bottom,0px);
+  --header-bg:#EDEDED; --input-bg:#F7F7F7; --modal-bg:#FFFFFF;
+  --shadow:0 1px 3px rgba(0,0,0,.08);
 }
+.dark {
+  --bg:#111111; --bg-dark:#1C1C1E; --card:#1C1C1E; --card-hover:#2C2C2E;
+  --text:#E5E5E5; --text-sub:#8E8E93; --text-light:#636366;
+  --border:#38383A; --danger:#FF453A; --link:#64D2FF;
+  --chat-right:#34C759; --chat-left:#2C2C2E;
+  --header-bg:#1C1C1E; --input-bg:#2C2C2E; --modal-bg:#1C1C1E;
+  --shadow:0 1px 3px rgba(0,0,0,.3);
+}
+
 * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
 html,body { height:100%; font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue','PingFang SC','Microsoft YaHei',sans-serif; background:var(--bg); color:var(--text); font-size:16px; overflow:hidden; }
 input,textarea,button { font-family:inherit; font-size:16px; }
 ::-webkit-scrollbar { width:0; display:none; }
 
-/* ===== 全局容器 ===== */
+/* ===== App Shell ===== */
 #app { height:100%; position:relative; overflow:hidden; }
 .page { display:none; height:100%; flex-direction:column; position:absolute; inset:0; background:var(--bg); z-index:1; }
 .page.active { display:flex; }
 
-/* ===== 微信绿色顶栏 ===== */
-.wx-header {
+/* ===== Headers ===== */
+.header {
   padding:12px 16px; padding-top:calc(12px + var(--safe-top));
   display:flex; align-items:center; gap:12px;
-  min-height:56px; position:relative; z-index:10;
+  min-height:56px; background:var(--header-bg); border-bottom:0.5px solid var(--border);
+  position:relative; z-index:10;
 }
-.wx-header-title { flex:1; font-size:17px; font-weight:600; text-align:center; }
-.wx-header .back { background:none; border:none; font-size:22px; color:var(--text); cursor:pointer; padding:4px 8px 4px 0; line-height:1; }
-.wx-header .action { background:none; border:none; font-size:20px; cursor:pointer; padding:4px; }
+.header-title { flex:1; font-size:17px; font-weight:600; text-align:center; }
+.header .back { background:none; border:none; font-size:24px; color:var(--text); cursor:pointer; padding:4px 8px 4px 0; line-height:1; }
+.header .action { background:none; border:none; font-size:20px; cursor:pointer; padding:4px; color:var(--text); }
 
-/* ===== 登录页 ===== */
-.login-page {
-  background:#F6F6F6; justify-content:flex-start; align-items:center;
-  padding:0 24px;
-}
+/* ===== Login ===== */
+.login-page { background:var(--bg); justify-content:flex-start; align-items:center; padding:0 24px; }
 .login-hero { text-align:center; padding:80px 0 40px; }
 .login-hero .logo { font-size:72px; margin-bottom:16px; }
-.login-hero h1 { font-size:22px; font-weight:600; color:var(--text); margin-bottom:6px; }
+.login-hero h1 { font-size:24px; font-weight:700; margin-bottom:6px; }
 .login-hero p { font-size:14px; color:var(--text-sub); }
 .login-form { width:100%; max-width:400px; }
-.login-form .field { position:relative; margin-bottom:0; border-bottom:1px solid var(--border); }
-.login-form .field input {
-  width:100%; padding:16px 0; border:none; background:transparent;
-  font-size:16px; outline:none; color:var(--text);
-}
+.login-form .field { border-bottom:1px solid var(--border); }
+.login-form .field input { width:100%; padding:16px 0; border:none; background:transparent; font-size:16px; outline:none; color:var(--text); }
 .login-form .field input::placeholder { color:var(--text-light); }
-.login-form .extra-fields { display:none; }
-.login-form .extra-fields.show { display:block; }
+.login-form .extra { display:none; }
+.login-form .extra.show { display:block; }
 .login-form .error { color:var(--danger); font-size:13px; padding:8px 0; display:none; text-align:center; }
-.login-btn {
-  width:100%; padding:14px; margin-top:24px; border:none; border-radius:6px;
-  background:var(--green); color:#fff; font-size:17px; font-weight:500;
-  cursor:pointer; transition:opacity .2s;
-}
+.login-btn { width:100%; padding:14px; margin-top:24px; border:none; border-radius:8px; background:var(--green); color:#fff; font-size:17px; font-weight:500; cursor:pointer; }
 .login-btn:active { opacity:.8; }
 .login-switch { text-align:center; margin-top:16px; font-size:14px; color:var(--link); cursor:pointer; }
 
-/* ===== 主页 ===== */
+/* ===== Main Page ===== */
 .main-page { background:var(--bg); }
-.main-header {
-  background:#EDEDED; border-bottom:0.5px solid var(--border);
-  padding:12px 16px; padding-top:calc(12px + var(--safe-top));
-  display:flex; justify-content:space-between; align-items:center;
-}
+.main-header { background:var(--header-bg); border-bottom:0.5px solid var(--border); padding:12px 16px; padding-top:calc(12px + var(--safe-top)); display:flex; justify-content:space-between; align-items:center; }
 .main-header h1 { font-size:17px; font-weight:600; }
-.main-header .actions { display:flex; gap:20px; }
-.main-header .actions button { background:none; border:none; font-size:20px; cursor:pointer; }
+.main-header .actions { display:flex; gap:16px; }
+.main-header .actions button { background:none; border:none; font-size:20px; cursor:pointer; color:var(--text); }
 
-/* Tab 栏 */
-.tab-bar {
-  display:flex; background:#F7F7F7; border-top:0.5px solid var(--border);
-  padding:4px 0; padding-bottom:calc(4px + var(--safe-bottom));
-}
-.tab-item {
-  flex:1; display:flex; flex-direction:column; align-items:center; gap:2px;
-  padding:4px 0; cursor:pointer; border:none; background:none;
-  color:var(--text-sub); font-size:10px; transition:color .2s;
-}
+/* Tab Bar */
+.tab-bar { display:flex; background:var(--card); border-top:0.5px solid var(--border); padding:4px 0; padding-bottom:calc(4px + var(--safe-bottom)); }
+.tab-item { flex:1; display:flex; flex-direction:column; align-items:center; gap:2px; padding:4px 0; cursor:pointer; border:none; background:none; color:var(--text-sub); font-size:10px; transition:color .2s; position:relative; }
 .tab-item.active { color:var(--green); }
 .tab-item .icon { font-size:22px; line-height:1.2; }
-.tab-item .dot { width:6px; height:6px; background:var(--danger); border-radius:50%; position:absolute; top:-2px; right:-2px; }
+.tab-item .badge { position:absolute; top:0; right:calc(50% - 18px); min-width:16px; height:16px; border-radius:8px; background:var(--danger); color:#fff; font-size:10px; line-height:16px; text-align:center; padding:0 4px; }
 .tab-panel { display:none; flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; }
 .tab-panel.active { display:block; }
 
-/* ===== 聊天列表 ===== */
-.chat-item {
-  display:flex; align-items:center; padding:12px 16px;
-  background:var(--card); border-bottom:0.5px solid var(--border);
-  cursor:pointer; transition:background .1s;
-}
-.chat-item:active { background:#D9D9D9; }
-.chat-avatar {
-  width:52px; height:52px; border-radius:6px; flex-shrink:0;
-  display:flex; align-items:center; justify-content:center;
-  font-size:28px; position:relative;
-}
+/* ===== Chat List ===== */
+.chat-item { display:flex; align-items:center; padding:12px 16px; background:var(--card); border-bottom:0.5px solid var(--border); cursor:pointer; transition:background .1s; }
+.chat-item:active { background:var(--card-hover); }
+.chat-avatar { width:52px; height:52px; border-radius:6px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:28px; position:relative; background:var(--bg-dark); overflow:hidden; }
+.chat-avatar img { width:100%; height:100%; object-fit:cover; }
 .chat-body { flex:1; margin-left:12px; overflow:hidden; }
 .chat-body .name { font-size:17px; font-weight:400; line-height:1.4; }
 .chat-body .preview { font-size:14px; color:var(--text-sub); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px; }
 .chat-meta { text-align:right; flex-shrink:0; margin-left:8px; }
 .chat-meta .time { font-size:12px; color:var(--text-sub); }
-.chat-meta .badge {
-  display:inline-block; min-width:18px; height:18px; border-radius:9px;
-  background:var(--danger); color:#fff; font-size:11px; text-align:center;
-  line-height:18px; padding:0 5px; margin-top:4px;
-}
+.chat-meta .unread { display:inline-block; min-width:18px; height:18px; border-radius:9px; background:var(--danger); color:#fff; font-size:11px; text-align:center; line-height:18px; padding:0 5px; margin-top:4px; }
 
-/* ===== 聊天页 ===== */
-.chat-page { background:var(--bg); }
-.msgs { flex:1; overflow-y:auto; padding:12px 16px; -webkit-overflow-scrolling:touch; }
-.msg-row { display:flex; gap:8px; margin-bottom:16px; max-width:82%; animation:msgIn .25s ease-out; }
+/* ===== Messages ===== */
+.msgs { flex:1; overflow-y:auto; padding:12px 16px; -webkit-overflow-scrolling:touch; background:var(--bg); }
+.msg-row { display:flex; gap:8px; margin-bottom:16px; max-width:85%; animation:msgIn .25s ease-out; }
 .msg-row.right { margin-left:auto; flex-direction:row-reverse; }
 .msg-row.left { margin-right:auto; }
 @keyframes msgIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
 
-.msg-av { width:40px; height:40px; border-radius:4px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:22px; background:#E0E0E0; }
+.msg-av { width:40px; height:40px; border-radius:4px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:22px; background:var(--bg-dark); overflow:hidden; cursor:pointer; }
+.msg-av img { width:100%; height:100%; object-fit:cover; }
 .msg-content { display:flex; flex-direction:column; }
 .msg-name { font-size:12px; color:var(--text-sub); margin-bottom:4px; padding:0 4px; }
 .msg-row.right .msg-name { text-align:right; }
 .msg-tag { display:inline-block; font-size:10px; background:var(--green); color:#fff; padding:0 4px; border-radius:2px; margin-right:4px; vertical-align:middle; }
-.msg-bubble {
-  padding:10px 14px; border-radius:4px; font-size:16px; line-height:1.5;
-  word-break:break-word; position:relative; max-width:100%;
-}
-.msg-row.right .msg-bubble { background:var(--chat-right); }
+.msg-bubble { padding:10px 14px; border-radius:4px; font-size:16px; line-height:1.5; word-break:break-word; position:relative; max-width:100%; }
+.msg-row.right .msg-bubble { background:var(--chat-right); color:#000; }
 .msg-row.left .msg-bubble { background:var(--chat-left); }
-/* 气泡尖角 */
-.msg-row.right .msg-bubble::after {
-  content:''; position:absolute; top:12px; right:-6px;
-  border:6px solid transparent; border-left-color:var(--chat-right);
-}
-.msg-row.left .msg-bubble::after {
-  content:''; position:absolute; top:12px; left:-6px;
-  border:6px solid transparent; border-right-color:var(--chat-left);
-}
+.msg-row.right .msg-bubble::after { content:''; position:absolute; top:12px; right:-6px; border:6px solid transparent; border-left-color:var(--chat-right); }
+.msg-row.left .msg-bubble::after { content:''; position:absolute; top:12px; left:-6px; border:6px solid transparent; border-right-color:var(--chat-left); }
 .msg-time { font-size:11px; color:var(--text-light); margin-top:4px; padding:0 4px; }
 .msg-row.right .msg-time { text-align:right; }
 
-/* 语音消息 */
+/* Reply quote */
+.msg-reply { font-size:12px; color:var(--text-sub); background:rgba(0,0,0,.05); padding:4px 8px; border-radius:3px; margin-bottom:6px; border-left:3px solid var(--green); max-width:100%; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.dark .msg-reply { background:rgba(255,255,255,.05); }
+
+/* Forward */
+.msg-forward { font-size:11px; color:var(--text-sub); margin-bottom:4px; }
+
+/* Reactions */
+.msg-reactions { display:flex; gap:4px; margin-top:4px; flex-wrap:wrap; }
+.reaction { font-size:14px; background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:2px 6px; cursor:pointer; }
+.reaction.mine { border-color:var(--green); background:rgba(7,193,96,.1); }
+
+/* System message */
+.msg-system { text-align:center; margin:12px 0; }
+.msg-system span { font-size:12px; color:var(--text-sub); background:var(--bg-dark); padding:4px 12px; border-radius:4px; }
+
+/* Red envelope */
+.msg-red-envelope { background:linear-gradient(135deg,#FA9D3B,#E8652B); color:#fff; padding:12px 16px; border-radius:8px; cursor:pointer; min-width:200px; }
+.msg-red-envelope .re-title { font-size:14px; font-weight:500; margin-bottom:4px; }
+.msg-red-envelope .re-greeting { font-size:12px; opacity:.8; }
+.msg-red-envelope .re-icon { float:right; font-size:28px; margin-left:12px; }
+
+/* Voice */
 .voice-bubble { display:flex; align-items:center; gap:8px; min-width:100px; cursor:pointer; }
-.voice-bubble .icon { font-size:16px; }
 .voice-wave { display:flex; align-items:center; gap:2px; height:18px; }
-.voice-wave span { width:3px; border-radius:2px; background:var(--text); }
-.voice-wave span:nth-child(1){height:6px} .voice-wave span:nth-child(2){height:12px}
-.voice-wave span:nth-child(3){height:8px} .voice-wave span:nth-child(4){height:14px}
-.voice-wave span:nth-child(5){height:6px}
-.voice-playing .voice-wave span { background:var(--green); animation:wave 1s ease-in-out infinite; }
+.voice-wave span { width:3px; border-radius:2px; background:currentColor; }
+.voice-wave span:nth-child(1){height:6px} .voice-wave span:nth-child(2){height:12px} .voice-wave span:nth-child(3){height:8px} .voice-wave span:nth-child(4){height:14px} .voice-wave span:nth-child(5){height:6px}
+.voice-playing .voice-wave span { animation:wave 1s ease-in-out infinite; }
 .voice-playing .voice-wave span:nth-child(2){animation-delay:.1s} .voice-playing .voice-wave span:nth-child(3){animation-delay:.2s}
 .voice-playing .voice-wave span:nth-child(4){animation-delay:.3s} .voice-playing .voice-wave span:nth-child(5){animation-delay:.4s}
 @keyframes wave { 0%,100%{transform:scaleY(1)} 50%{transform:scaleY(.3)} }
-.voice-dur { font-size:12px; color:var(--text-sub); }
 
-/* 图片消息 */
+/* Image */
 .msg-img { max-width:200px; max-height:200px; border-radius:4px; cursor:pointer; display:block; }
 
-/* 打字提示 */
+/* File */
+.msg-file { display:flex; align-items:center; gap:12px; padding:4px 0; }
+.msg-file .file-icon { font-size:32px; }
+.msg-file .file-info .file-name { font-size:14px; font-weight:500; }
+.msg-file .file-info .file-size { font-size:12px; color:var(--text-sub); }
+
+/* Typing */
 .typing-dots { display:flex; gap:4px; padding:10px 14px; }
 .typing-dots span { width:8px; height:8px; background:#999; border-radius:50%; animation:typing 1.4s infinite; }
 .typing-dots span:nth-child(2){animation-delay:.2s} .typing-dots span:nth-child(3){animation-delay:.4s}
 @keyframes typing { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-6px)} }
 
-/* ===== 输入区域 ===== */
-.input-area {
-  background:#F7F7F7; border-top:0.5px solid var(--border);
-  padding:8px 12px; padding-bottom:calc(8px + var(--safe-bottom));
-  display:flex; align-items:flex-end; gap:8px;
-}
-.input-area .tool-btn { background:none; border:none; font-size:24px; cursor:pointer; padding:4px; flex-shrink:0; line-height:1; }
-.input-area textarea {
-  flex:1; padding:10px 14px; border:0.5px solid var(--border); border-radius:6px;
-  background:var(--card); font-size:16px; resize:none; outline:none;
-  max-height:120px; min-height:40px; line-height:1.4;
-}
+/* ===== Input Area ===== */
+.input-area { background:var(--input-bg); border-top:0.5px solid var(--border); padding:8px 12px; padding-bottom:calc(8px + var(--safe-bottom)); display:flex; align-items:flex-end; gap:8px; }
+.input-area .tool-btn { background:none; border:none; font-size:24px; cursor:pointer; padding:4px; flex-shrink:0; line-height:1; color:var(--text); }
+.input-area textarea { flex:1; padding:10px 14px; border:0.5px solid var(--border); border-radius:6px; background:var(--card); font-size:16px; resize:none; outline:none; max-height:120px; min-height:40px; line-height:1.4; color:var(--text); }
 .input-area textarea:focus { border-color:var(--green); }
-.send-btn {
-  padding:10px 16px; background:var(--green); color:#fff; border:none;
-  border-radius:6px; font-size:15px; cursor:pointer; flex-shrink:0; white-space:nowrap;
-}
+.send-btn { padding:10px 16px; background:var(--green); color:#fff; border:none; border-radius:6px; font-size:15px; cursor:pointer; flex-shrink:0; }
 .send-btn:active { background:var(--green-dark); }
 .send-btn:disabled { background:#C0C0C0; }
 
-/* 录音按钮 */
-.record-btn {
-  width:100%; padding:12px; border:2px solid var(--green); border-radius:30px;
-  background:var(--card); color:var(--green); font-size:16px; cursor:pointer;
-  flex:1; text-align:center; transition:all .2s;
-}
-.record-btn:active,.record-btn.recording { background:var(--green); color:#fff; border-color:var(--green); }
-.record-btn.recording { animation:pulse 1s infinite; }
+.record-btn { width:100%; padding:12px; border:2px solid var(--green); border-radius:30px; background:var(--card); color:var(--green); font-size:16px; cursor:pointer; flex:1; text-align:center; }
+.record-btn.recording { background:var(--green); color:#fff; animation:pulse 1s infinite; }
 @keyframes pulse { 0%,100%{box-shadow:0 0 0 0 rgba(7,193,96,.3)} 50%{box-shadow:0 0 0 10px rgba(7,193,96,0)} }
 
-/* 表情面板 */
-.emoji-panel {
-  display:none; background:var(--card); border-top:0.5px solid var(--border);
-  padding:12px; max-height:200px; overflow-y:auto;
-  flex-wrap:wrap; gap:2px;
-}
+/* Emoji */
+.emoji-panel { display:none; background:var(--card); border-top:0.5px solid var(--border); padding:12px; max-height:200px; overflow-y:auto; flex-wrap:wrap; gap:2px; }
 .emoji-panel.show { display:flex; }
 .emoji-item { width:36px; height:36px; display:flex; align-items:center; justify-content:center; font-size:22px; cursor:pointer; border-radius:4px; }
 .emoji-item:active { background:var(--bg); }
 
-/* ===== 通讯录 ===== */
+/* ===== Contact List ===== */
 .section-title { padding:8px 16px; font-size:13px; color:var(--text-sub); background:var(--bg); position:sticky; top:0; z-index:1; }
-.contact-item {
-  display:flex; align-items:center; padding:12px 16px;
-  background:var(--card); border-bottom:0.5px solid var(--border); cursor:pointer;
-}
-.contact-item:active { background:#ECECEC; }
-.contact-av { width:40px; height:40px; border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:22px; flex-shrink:0; }
+.contact-item { display:flex; align-items:center; padding:12px 16px; background:var(--card); border-bottom:0.5px solid var(--border); cursor:pointer; }
+.contact-item:active { background:var(--card-hover); }
+.contact-av { width:40px; height:40px; border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:22px; flex-shrink:0; background:var(--bg-dark); overflow:hidden; }
+.contact-av img { width:100%; height:100%; object-fit:cover; }
 .contact-name { margin-left:12px; font-size:17px; flex:1; }
 .contact-badge { font-size:10px; background:var(--green); color:#fff; padding:1px 6px; border-radius:3px; margin-left:8px; }
+.contact-sig { font-size:13px; color:var(--text-sub); margin-left:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
-/* ===== 我的 ===== */
-.profile-hd {
-  background:linear-gradient(135deg,#4A90D9 0%,#357ABD 100%);
-  padding:60px 20px 30px; display:flex; align-items:center; gap:16px;
-}
-.profile-av { width:64px; height:64px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:36px; background:rgba(255,255,255,.2); }
+/* ===== Profile ===== */
+.profile-hd { background:linear-gradient(135deg,#4A90D9,#357ABD); padding:60px 20px 30px; display:flex; align-items:center; gap:16px; }
+.profile-av { width:64px; height:64px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:36px; background:rgba(255,255,255,.2); overflow:hidden; }
+.profile-av img { width:100%; height:100%; object-fit:cover; }
 .profile-info h2 { color:#fff; font-size:20px; font-weight:600; margin-bottom:4px; }
 .profile-info p { color:rgba(255,255,255,.7); font-size:14px; }
 .profile-section { margin-top:10px; }
-.profile-row {
-  display:flex; align-items:center; padding:14px 20px;
-  background:var(--card); border-bottom:0.5px solid var(--border); cursor:pointer;
-}
-.profile-row:active { background:#ECECEC; }
+.profile-row { display:flex; align-items:center; padding:14px 20px; background:var(--card); border-bottom:0.5px solid var(--border); cursor:pointer; }
+.profile-row:active { background:var(--card-hover); }
 .profile-row .icon { font-size:20px; margin-right:12px; }
 .profile-row .label { flex:1; font-size:17px; }
 .profile-row .arrow { color:var(--text-light); font-size:16px; }
+.profile-row .value { color:var(--text-sub); font-size:14px; margin-right:8px; }
 .logout-btn { display:block; margin:20px auto; padding:12px 40px; background:none; border:1px solid var(--danger); color:var(--danger); border-radius:6px; font-size:16px; cursor:pointer; }
 
-/* ===== 弹窗 ===== */
+/* ===== Moments ===== */
+.moments-page { background:var(--bg); }
+.moment-item { background:var(--card); margin-bottom:10px; padding:16px; }
+.moment-header { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
+.moment-av { width:44px; height:44px; border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:24px; background:var(--bg-dark); overflow:hidden; cursor:pointer; }
+.moment-av img { width:100%; height:100%; object-fit:cover; }
+.moment-name { font-size:16px; font-weight:500; color:var(--link); }
+.moment-text { font-size:15px; line-height:1.6; margin-bottom:12px; }
+.moment-images { display:grid; gap:4px; margin-bottom:12px; }
+.moment-images.g1 { grid-template-columns:1fr; max-width:250px; }
+.moment-images.g2,.moment-images.g3 { grid-template-columns:repeat(3,1fr); max-width:300px; }
+.moment-images.g4,.moment-images.g5,.moment-images.g6 { grid-template-columns:repeat(3,1fr); max-width:300px; }
+.moment-images img { width:100%; aspect-ratio:1; object-fit:cover; border-radius:4px; cursor:pointer; }
+.moment-actions { display:flex; justify-content:space-between; align-items:center; margin-top:8px; }
+.moment-time { font-size:12px; color:var(--text-sub); }
+.moment-btns { display:flex; gap:16px; }
+.moment-btns button { background:none; border:none; font-size:13px; color:var(--link); cursor:pointer; padding:4px; }
+.moment-likes { font-size:13px; color:var(--link); padding:4px 0; border-bottom:1px solid var(--border); margin-bottom:8px; }
+.moment-comment { font-size:14px; padding:4px 0; }
+.moment-comment .name { color:var(--link); margin-right:4px; }
+
+/* Compose moment */
+.compose-bar { display:flex; align-items:center; gap:12px; padding:16px; background:var(--card); margin-bottom:10px; }
+.compose-bar input { flex:1; padding:10px 14px; border:1px solid var(--border); border-radius:20px; background:var(--bg); font-size:15px; outline:none; color:var(--text); }
+
+/* ===== Search ===== */
+.search-bar { display:flex; align-items:center; gap:8px; padding:8px 16px; background:var(--bg); }
+.search-bar input { flex:1; padding:8px 12px; border:none; border-radius:6px; background:var(--card); font-size:15px; outline:none; color:var(--text); }
+.search-bar .cancel { background:none; border:none; color:var(--link); font-size:15px; cursor:pointer; }
+
+/* ===== Modals ===== */
 .modal-bg { position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:100; display:none; align-items:flex-end; justify-content:center; }
 .modal-bg.show { display:flex; }
-.modal-box {
-  background:var(--card); border-radius:12px 12px 0 0; width:100%; max-width:500px;
-  max-height:85vh; overflow-y:auto; padding:20px;
-}
+.modal-box { background:var(--modal-bg); border-radius:12px 12px 0 0; width:100%; max-width:500px; max-height:85vh; overflow-y:auto; padding:20px; }
 .modal-box h3 { font-size:18px; font-weight:600; text-align:center; margin-bottom:20px; }
-.modal-box input,.modal-box textarea {
-  width:100%; padding:14px; border:0.5px solid var(--border); border-radius:6px;
-  font-size:16px; margin-bottom:12px; outline:none; background:#FAFAFA;
-}
-.modal-box input:focus,.modal-box textarea:focus { border-color:var(--green); background:#fff; }
+.modal-box input,.modal-box textarea { width:100%; padding:14px; border:0.5px solid var(--border); border-radius:6px; font-size:16px; margin-bottom:12px; outline:none; background:var(--bg); color:var(--text); }
+.modal-box input:focus,.modal-box textarea:focus { border-color:var(--green); background:var(--card); }
 .modal-btn { width:100%; padding:14px; border:none; border-radius:6px; font-size:16px; cursor:pointer; margin-bottom:8px; }
 .modal-btn-ok { background:var(--green); color:#fff; }
 .modal-btn-cancel { background:var(--bg); color:var(--text); }
 
-/* ===== 空状态 ===== */
+/* ===== Context Menu ===== */
+.ctx-menu { position:fixed; background:var(--card); border-radius:8px; box-shadow:var(--shadow),0 4px 12px rgba(0,0,0,.15); z-index:200; overflow:hidden; min-width:120px; }
+.ctx-item { padding:12px 16px; font-size:15px; cursor:pointer; border-bottom:0.5px solid var(--border); display:flex; align-items:center; gap:8px; }
+.ctx-item:last-child { border-bottom:none; }
+.ctx-item:active { background:var(--card-hover); }
+
+/* ===== Toast ===== */
+.toast { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); padding:12px 24px; background:rgba(0,0,0,.75); color:#fff; border-radius:8px; font-size:14px; z-index:999; animation:toastIn .3s ease-out; }
+@keyframes toastIn { from{opacity:0;transform:translate(-50%,-50%) scale(.9)} to{opacity:1;transform:translate(-50%,-50%) scale(1)} }
+
+/* ===== Empty State ===== */
 .empty { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; color:var(--text-sub); gap:12px; }
 .empty .icon { font-size:48px; }
 .empty p { font-size:14px; }
 
-/* ===== Toast ===== */
-.toast {
-  position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
-  padding:12px 24px; background:rgba(0,0,0,.75); color:#fff;
-  border-radius:8px; font-size:14px; z-index:999;
-  animation:toastIn .3s ease-out;
-}
-@keyframes toastIn { from{opacity:0;transform:translate(-50%,-50%) scale(.9)} to{opacity:1;transform:translate(-50%,-50%) scale(1)} }
+/* ===== Search Page ===== */
+.search-page { background:var(--bg); }
+.search-results { flex:1; overflow-y:auto; }
+.search-group { margin-bottom:8px; }
+.search-group-title { padding:8px 16px; font-size:13px; color:var(--text-sub); font-weight:500; }
+.search-item { display:flex; align-items:center; padding:12px 16px; background:var(--card); border-bottom:0.5px solid var(--border); cursor:pointer; }
+.search-item:active { background:var(--card-hover); }
+
+/* ===== Member List (in modal) ===== */
+.member-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:16px; padding:12px 0; }
+.member-item { display:flex; flex-direction:column; align-items:center; gap:6px; cursor:pointer; }
+.member-item .av { width:48px; height:48px; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:24px; background:var(--bg-dark); overflow:hidden; }
+.member-item .av img { width:100%; height:100%; object-fit:cover; }
+.member-item .nm { font-size:12px; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:60px; }
+
+/* ===== Notification dot on tab ===== */
+.has-new::after { content:''; position:absolute; top:2px; right:calc(50% - 16px); width:8px; height:8px; background:var(--danger); border-radius:50%; }
+
+/* ===== Forward modal list ===== */
+.forward-list { max-height:300px; overflow-y:auto; }
+.forward-item { display:flex; align-items:center; padding:12px 0; border-bottom:0.5px solid var(--border); cursor:pointer; }
+.forward-item:active { background:var(--card-hover); }
+.forward-item .av { width:36px; height:36px; border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:20px; background:var(--bg-dark); margin-right:12px; }
+.forward-item .nm { font-size:16px; }
+
+/* ===== Settings sub-pages ===== */
+.settings-row { display:flex; align-items:center; padding:14px 20px; background:var(--card); border-bottom:0.5px solid var(--border); }
+.settings-row .label { flex:1; font-size:17px; }
+.settings-row .desc { font-size:14px; color:var(--text-sub); }
+.toggle { width:44px; height:24px; border-radius:12px; background:var(--text-light); position:relative; cursor:pointer; transition:background .2s; }
+.toggle.on { background:var(--green); }
+.toggle::after { content:''; position:absolute; top:2px; left:2px; width:20px; height:20px; border-radius:50%; background:#fff; transition:transform .2s; }
+.toggle.on::after { transform:translateX(20px); }
 </style>
 </head>
 <body>
 <div id="app">
-  <!-- ===== 登录页 ===== -->
-  <div id="loginPage" class="page login-page active">
-    <div class="login-hero">
-      <div class="logo">🏠</div>
-      <h1>FamilyChat</h1>
-      <p>家庭数字人聊天</p>
-    </div>
-    <div class="login-form">
-      <div id="loginError" class="error"></div>
-      <div id="extraFields" class="extra-fields">
-        <div class="field"><input id="regNick" placeholder="你的昵称"></div>
-        <div class="field"><input id="regRole" placeholder="家庭角色（爸爸/妈妈/儿子...）"></div>
-      </div>
-      <div class="field"><input id="loginEmail" type="email" placeholder="邮箱"></div>
-      <div class="field"><input id="loginPass" type="password" placeholder="密码"></div>
-      <button class="login-btn" id="loginBtn">登录</button>
-      <div class="login-switch" id="loginSwitch">注册新账号</div>
-    </div>
-  </div>
 
-  <!-- ===== 主页 ===== -->
-  <div id="mainPage" class="page main-page">
-    <div class="main-header">
-      <h1>微信</h1>
-      <div class="actions">
-        <button onclick="showModal('createGroupModal')" title="发起群聊">＋</button>
-      </div>
-    </div>
-    <div style="flex:1;overflow:hidden;position:relative;">
-      <div id="panelChat" class="tab-panel active"></div>
-      <div id="panelContact" class="tab-panel"></div>
-      <div id="panelProfile" class="tab-panel"></div>
-    </div>
-    <div class="tab-bar">
-      <button class="tab-item active" onclick="switchTab('Chat',this)"><span class="icon">💬</span><span>微信</span></button>
-      <button class="tab-item" onclick="switchTab('Contact',this)"><span class="icon">👥</span><span>通讯录</span></button>
-      <button class="tab-item" onclick="switchTab('Profile',this)"><span class="icon">👤</span><span>我</span></button>
-    </div>
+<!-- ===== Login Page ===== -->
+<div id="loginPage" class="page login-page active">
+  <div class="login-hero">
+    <div class="logo">🏠</div>
+    <h1>FamilyChat</h1>
+    <p>家庭数字人聊天</p>
   </div>
-
-  <!-- ===== 聊天页 ===== -->
-  <div id="chatPage" class="page chat-page">
-    <div class="wx-header">
-      <button class="back" onclick="goBack()">‹</button>
-      <div class="wx-header-title" id="chatTitle">-</div>
-      <button class="action" onclick="showModal('membersModal')">⋯</button>
+  <div class="login-form">
+    <div id="loginError" class="error"></div>
+    <div id="extraFields" class="extra">
+      <div class="field"><input id="regNick" placeholder="你的昵称"></div>
+      <div class="field"><input id="regRole" placeholder="家庭角色（爸爸/妈妈/儿子...）"></div>
     </div>
-    <div class="msgs" id="msgList"></div>
-    <div class="emoji-panel" id="emojiPanel"></div>
-    <div class="input-area" id="inputArea">
-      <button class="tool-btn" onclick="toggleEmoji()">😊</button>
-      <button class="tool-btn" onclick="$('imgFile').click()">📷</button>
-      <input type="file" id="imgFile" accept="image/*" style="display:none" onchange="sendImage(this)">
-      <button class="tool-btn" id="voiceToggle" onclick="toggleVoice()">🎤</button>
-      <textarea id="msgInput" rows="1" placeholder="消息" oninput="autoGrow(this)" onkeydown="onKey(event)"></textarea>
-      <button class="record-btn" id="recordBtn" style="display:none" onmousedown="recStart()" onmouseup="recStop()" ontouchstart="recStart()" ontouchend="recStop()">按住 说话</button>
-      <button class="send-btn" id="sendBtn" onclick="sendText()">发送</button>
-    </div>
+    <div class="field"><input id="loginEmail" type="email" placeholder="邮箱"></div>
+    <div class="field"><input id="loginPass" type="password" placeholder="密码"></div>
+    <button class="login-btn" id="loginBtn">登录</button>
+    <div class="login-switch" id="loginSwitch">注册新账号</div>
   </div>
 </div>
 
-<!-- 弹窗: 创建群 -->
+<!-- ===== Main Page ===== -->
+<div id="mainPage" class="page main-page">
+  <div class="main-header">
+    <h1>微信</h1>
+    <div class="actions">
+      <button onclick="showPage('searchPage')" title="搜索">🔍</button>
+      <button onclick="showModal('createGroupModal')" title="发起群聊">＋</button>
+    </div>
+  </div>
+  <div style="flex:1;overflow:hidden;position:relative;">
+    <div id="panelChat" class="tab-panel active"></div>
+    <div id="panelContact" class="tab-panel"></div>
+    <div id="panelProfile" class="tab-panel"></div>
+  </div>
+  <div class="tab-bar">
+    <button class="tab-item active" onclick="switchTab('Chat',this)"><span class="icon">💬</span><span>微信</span></button>
+    <button class="tab-item" onclick="switchTab('Contact',this)" id="tabContact"><span class="icon">👥</span><span>通讯录</span></button>
+    <button class="tab-item" onclick="switchTab('Profile',this)"><span class="icon">👤</span><span>我</span></button>
+  </div>
+</div>
+
+<!-- ===== Chat Page ===== -->
+<div id="chatPage" class="page" style="background:var(--bg);">
+  <div class="header">
+    <button class="back" onclick="goBack()">‹</button>
+    <div class="header-title" id="chatTitle">-</div>
+    <button class="action" onclick="showGroupInfo()">⋯</button>
+  </div>
+  <div class="msgs" id="msgList"></div>
+  <div class="emoji-panel" id="emojiPanel"></div>
+  <div class="input-area" id="inputArea">
+    <button class="tool-btn" onclick="toggleEmoji()">😊</button>
+    <button class="tool-btn" onclick="$('imgFile').click()">📷</button>
+    <input type="file" id="imgFile" accept="image/*" style="display:none" onchange="sendImage(this)">
+    <button class="tool-btn" onclick="$('fileInput').click()">📎</button>
+    <input type="file" id="fileInput" style="display:none" onchange="sendFile(this)">
+    <button class="tool-btn" id="voiceToggle" onclick="toggleVoice()">🎤</button>
+    <textarea id="msgInput" rows="1" placeholder="消息" oninput="autoGrow(this);sendTyping()" onkeydown="onKey(event)"></textarea>
+    <button class="record-btn" id="recordBtn" style="display:none" onmousedown="recStart()" onmouseup="recStop()" ontouchstart="recStart()" ontouchend="recStop()">按住 说话</button>
+    <button class="send-btn" id="sendBtn" onclick="sendText()">发送</button>
+  </div>
+</div>
+
+<!-- ===== Moments Page ===== -->
+<div id="momentsPage" class="page moments-page">
+  <div class="header">
+    <button class="back" onclick="goBack()">‹</button>
+    <div class="header-title">朋友圈</div>
+    <button class="action" onclick="showModal('composeMomentModal')">📷</button>
+  </div>
+  <div id="momentsList" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;"></div>
+</div>
+
+<!-- ===== Search Page ===== -->
+<div id="searchPage" class="page search-page">
+  <div class="search-bar">
+    <input id="searchInput" placeholder="搜索" oninput="doSearch(this.value)">
+    <button class="cancel" onclick="goBack()">取消</button>
+  </div>
+  <div id="searchResults" class="search-results"></div>
+</div>
+
+<!-- ===== Favorites Page ===== -->
+<div id="favoritesPage" class="page">
+  <div class="header">
+    <button class="back" onclick="goBack()">‹</button>
+    <div class="header-title">收藏</div>
+  </div>
+  <div id="favoritesList" style="flex:1;overflow-y:auto;"></div>
+</div>
+
+<!-- ===== Settings Page ===== -->
+<div id="settingsPage" class="page">
+  <div class="header">
+    <button class="back" onclick="goBack()">‹</button>
+    <div class="header-title">设置</div>
+  </div>
+  <div style="flex:1;overflow-y:auto;">
+    <div class="settings-row">
+      <span class="label">深色模式</span>
+      <div class="toggle" id="darkToggle" onclick="toggleDark()"></div>
+    </div>
+    <div class="settings-row" onclick="showModal('llmConfigModal')" style="cursor:pointer">
+      <span class="label">🤖 AI 模型配置</span>
+      <span class="arrow" style="color:var(--text-light)">›</span>
+    </div>
+    <div class="settings-row" onclick="loadFavorites();showPage('favoritesPage')" style="cursor:pointer">
+      <span class="label">⭐ 我的收藏</span>
+      <span class="arrow" style="color:var(--text-light)">›</span>
+    </div>
+    <div class="settings-row" onclick="showModal('refineModal')" style="cursor:pointer">
+      <span class="label">🧪 炼化数字人</span>
+      <span class="arrow" style="color:var(--text-light)">›</span>
+    </div>
+    <div class="settings-row">
+      <span class="label">版本</span>
+      <span class="desc">v2.0.0</span>
+    </div>
+    <button class="logout-btn" onclick="doLogout()" style="margin-top:40px">退出登录</button>
+  </div>
+</div>
+
+</div><!-- end #app -->
+
+<!-- ===== Modals ===== -->
+
+<!-- Create Group -->
 <div id="createGroupModal" class="modal-bg" onclick="if(event.target===this)closeModal(this)">
   <div class="modal-box">
     <h3>发起群聊</h3>
@@ -350,36 +435,112 @@ input,textarea,button { font-family:inherit; font-size:16px; }
   </div>
 </div>
 
-<!-- 弹窗: 炼化 -->
+<!-- Members -->
+<div id="membersModal" class="modal-bg" onclick="if(event.target===this)closeModal(this)">
+  <div class="modal-box">
+    <h3 id="membersTitle">群成员</h3>
+    <div id="memberList"></div>
+    <button class="modal-btn modal-btn-cancel" style="margin-top:16px" onclick="closeModal($('membersModal'))">关闭</button>
+  </div>
+</div>
+
+<!-- Refine -->
 <div id="refineModal" class="modal-bg" onclick="if(event.target===this)closeModal(this)">
   <div class="modal-box">
     <h3>🧪 炼化数字人</h3>
-    <p style="color:#888;font-size:13px;margin-bottom:16px;text-align:center">输入真人聊天记录、自我介绍，AI会提取性格特征</p>
+    <p style="color:var(--text-sub);font-size:13px;margin-bottom:16px;text-align:center">输入聊天记录或自我介绍，AI 提取性格特征</p>
+    <select id="refineAgentSelect" style="width:100%;padding:12px;border:0.5px solid var(--border);border-radius:6px;font-size:16px;margin-bottom:12px;background:var(--card);color:var(--text);"></select>
     <textarea id="refineText" rows="6" placeholder="粘贴聊天记录或自我介绍..."></textarea>
     <button class="modal-btn modal-btn-ok" onclick="doRefine()">开始炼化</button>
     <button class="modal-btn modal-btn-cancel" onclick="closeModal($('refineModal'))">取消</button>
   </div>
 </div>
 
-<!-- 弹窗: 成员 -->
-<div id="membersModal" class="modal-bg" onclick="if(event.target===this)closeModal(this)">
+<!-- Forward -->
+<div id="forwardModal" class="modal-bg" onclick="if(event.target===this)closeModal(this)">
   <div class="modal-box">
-    <h3>群成员</h3>
-    <div id="memberList"></div>
-    <button class="modal-btn modal-btn-cancel" style="margin-top:16px" onclick="closeModal($('membersModal'))">关闭</button>
+    <h3>转发给</h3>
+    <div id="forwardList" class="forward-list"></div>
+    <button class="modal-btn modal-btn-cancel" style="margin-top:16px" onclick="closeModal($('forwardModal'))">取消</button>
+  </div>
+</div>
+
+<!-- Red Envelope -->
+<div id="redEnvelopeModal" class="modal-bg" onclick="if(event.target===this)closeModal(this)">
+  <div class="modal-box">
+    <h3>🧧 发红包</h3>
+    <input id="reAmount" type="number" placeholder="金额（元）" min="0.01" max="200" step="0.01">
+    <input id="reGreeting" placeholder="祝福语" value="恭喜发财">
+    <input id="reCount" type="number" placeholder="红包个数" value="1" min="1">
+    <button class="modal-btn modal-btn-ok" onclick="doSendRedEnvelope()">塞钱进红包</button>
+    <button class="modal-btn modal-btn-cancel" onclick="closeModal($('redEnvelopeModal'))">取消</button>
+  </div>
+</div>
+
+<!-- Red Envelope Detail -->
+<div id="redEnvelopeDetail" class="modal-bg" onclick="if(event.target===this)closeModal(this)">
+  <div class="modal-box" id="redEnvelopeContent"></div>
+</div>
+
+<!-- Compose Moment -->
+<div id="composeMomentModal" class="modal-bg" onclick="if(event.target===this)closeModal(this)">
+  <div class="modal-box">
+    <h3>发朋友圈</h3>
+    <textarea id="momentText" rows="4" placeholder="分享新鲜事..."></textarea>
+    <div id="momentImgs" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;"></div>
+    <button class="modal-btn" style="background:var(--bg);color:var(--text);margin-bottom:12px" onclick="$('momentImgInput').click()">📷 添加图片</button>
+    <input type="file" id="momentImgInput" accept="image/*" multiple style="display:none" onchange="previewMomentImgs(this)">
+    <button class="modal-btn modal-btn-ok" onclick="doPublishMoment()">发表</button>
+    <button class="modal-btn modal-btn-cancel" onclick="closeModal($('composeMomentModal'))">取消</button>
+  </div>
+</div>
+
+<!-- LLM Config -->
+<div id="llmConfigModal" class="modal-bg" onclick="if(event.target===this)closeModal(this)">
+  <div class="modal-box">
+    <h3>🤖 AI 模型配置</h3>
+    <select id="llmProvider" style="width:100%;padding:12px;border:0.5px solid var(--border);border-radius:6px;font-size:16px;margin-bottom:12px;background:var(--card);color:var(--text);">
+      <option value="deepseek">DeepSeek</option>
+      <option value="openai">OpenAI</option>
+      <option value="zhipu">智谱AI</option>
+      <option value="qwen">通义千问</option>
+      <option value="local">本地模型</option>
+    </select>
+    <input id="llmApiKey" type="password" placeholder="API Key">
+    <input id="llmModel" placeholder="模型名称（如 deepseek-chat）">
+    <input id="llmBaseUrl" placeholder="Base URL（可选，留空用默认）">
+    <button class="modal-btn modal-btn-ok" onclick="doSaveLLMConfig()">保存</button>
+    <button class="modal-btn modal-btn-cancel" onclick="closeModal($('llmConfigModal'))">取消</button>
+  </div>
+</div>
+
+<!-- Pinned Messages -->
+<div id="pinnedModal" class="modal-bg" onclick="if(event.target===this)closeModal(this)">
+  <div class="modal-box">
+    <h3>📌 置顶消息</h3>
+    <div id="pinnedList"></div>
+    <button class="modal-btn modal-btn-cancel" style="margin-top:16px" onclick="closeModal($('pinnedModal'))">关闭</button>
   </div>
 </div>
 
 <script>
-// ==================== 状态 ====================
+// ==================== State ====================
 const S = {
   token: localStorage.getItem('fc_token') || '',
   user: JSON.parse(localStorage.getItem('fc_user') || 'null'),
-  groups: [], agents: [], curGroup: null, curGroupName: '',
+  groups: [], agents: [], friends: [],
+  curGroup: null, curGroupName: '',
   ws: null, isReg: false, voiceMode: false,
+  dark: localStorage.getItem('fc_dark') === 'true',
+  replyTo: null,
+  momentImgs: [],
+  searchTimer: null,
 };
 
 const $ = id => document.getElementById(id);
+
+// ==================== Init Dark Mode ====================
+if (S.dark) document.documentElement.classList.add('dark');
 
 // ==================== API ====================
 async function api(path, opts={}) {
@@ -393,16 +554,24 @@ async function api(path, opts={}) {
 
 function toast(msg) {
   const d = document.createElement('div');
-  d.className = 'toast';
-  d.textContent = msg;
+  d.className = 'toast'; d.textContent = msg;
   document.body.appendChild(d);
   setTimeout(()=>d.remove(), 2000);
 }
 
-// ==================== 页面切换 ====================
+// ==================== Page Navigation ====================
+let pageStack = ['loginPage'];
 function showPage(id) {
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   $(id).classList.add('active');
+  if (!pageStack.includes(id)) pageStack.push(id);
+}
+function goBack() {
+  pageStack.pop();
+  const prev = pageStack[pageStack.length-1] || 'mainPage';
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  $(prev).classList.add('active');
+  if (prev === 'mainPage') { S.curGroup = null; loadGroups(); }
 }
 function switchTab(name, btn) {
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
@@ -415,7 +584,15 @@ function switchTab(name, btn) {
 function showModal(id) { $(id).classList.add('show'); }
 function closeModal(el) { el.classList.remove('show'); }
 
-// ==================== 登录/注册 ====================
+// ==================== Dark Mode ====================
+function toggleDark() {
+  S.dark = !S.dark;
+  document.documentElement.classList.toggle('dark', S.dark);
+  localStorage.setItem('fc_dark', S.dark);
+  $('darkToggle').classList.toggle('on', S.dark);
+}
+
+// ==================== Auth ====================
 $('loginSwitch').onclick = () => {
   S.isReg = !S.isReg;
   $('extraFields').classList.toggle('show', S.isReg);
@@ -441,18 +618,19 @@ $('loginBtn').onclick = async () => {
   } catch(e) { showErr(e.message); }
 };
 function showErr(m) { const e=$('loginError'); e.textContent=m; e.style.display='block'; setTimeout(()=>e.style.display='none',3000); }
-function doLogout() { S.token=''; S.user=null; localStorage.clear(); if(S.ws)S.ws.close(); showPage('loginPage'); }
+function doLogout() { S.token=''; S.user=null; localStorage.removeItem('fc_token'); localStorage.removeItem('fc_user'); if(S.ws)S.ws.close(); pageStack=['loginPage']; showPage('loginPage'); }
 
-// ==================== 进入应用 ====================
+// ==================== Enter App ====================
 async function enterApp() {
+  pageStack = ['mainPage'];
   showPage('mainPage');
-  await loadGroups();
-  await loadAgents();
+  await Promise.all([loadGroups(), loadAgents(), loadFriends()]);
   connectWS();
   renderProfile();
+  $('darkToggle').classList.toggle('on', S.dark);
 }
 
-// ==================== 群组 ====================
+// ==================== Groups ====================
 async function loadGroups() {
   try { S.groups = await api('/api/groups'); } catch(e) { console.error(e); }
   renderGroups();
@@ -464,14 +642,12 @@ function renderGroups() {
     return;
   }
   el.innerHTML = S.groups.map(g => {
-    const av = g.avatar||'👥';
-    const name = esc(g.name);
-    const preview = esc(g.last_message||'');
-    const time = fmtTime(g.last_time);
-    return `<div class="chat-item" onclick="openChat('${g.id}','${name}','${av}')">
-      <div class="chat-avatar">${av}</div>
-      <div class="chat-body"><div class="name">${name}</div><div class="preview">${preview}</div></div>
-      <div class="chat-meta"><div class="time">${time}</div></div>
+    const av = g.avatar || '👥';
+    const avatarHtml = av.startsWith('/') ? `<img src="${av}">` : av;
+    return `<div class="chat-item" onclick="openChat('${g.id}','${esc(g.name)}','${esc(av)}')">
+      <div class="chat-avatar">${avatarHtml}</div>
+      <div class="chat-body"><div class="name">${esc(g.name)}</div><div class="preview">${esc(g.last_message||'')}</div></div>
+      <div class="chat-meta"><div class="time">${fmtTime(g.last_time)}</div></div>
     </div>`;
   }).join('');
 }
@@ -487,61 +663,124 @@ async function doCreateGroup() {
   } catch(e) { toast(e.message); }
 }
 
-// ==================== 通讯录 ====================
+// ==================== Contacts ====================
 async function loadContacts() {
   let html = '<div class="section-title">数字人</div>';
   for (const a of S.agents) {
-    html += `<div class="contact-item"><div class="contact-av">${a.avatar||'🤖'}</div><div class="contact-name">${esc(a.name)}</div><span class="contact-badge">AI</span></div>`;
+    html += `<div class="contact-item" onclick="showAgentDetail('${a.id}')">
+      <div class="contact-av">${a.avatar||'🤖'}</div>
+      <div class="contact-name">${esc(a.name)}</div>
+      <span class="contact-badge">AI</span>
+    </div>`;
   }
+  // Friends
+  if (S.friends.length) {
+    html += '<div class="section-title">好友</div>';
+    for (const f of S.friends) {
+      const avHtml = f.avatar_url ? `<img src="${f.avatar_url}">` : (f.avatar||'😀');
+      const online = f.online_status === 'online' ? '🟢' : '';
+      html += `<div class="contact-item">
+        <div class="contact-av">${avHtml}</div>
+        <div class="contact-name">${esc(f.remark||f.nickname)} ${online}</div>
+      </div>`;
+    }
+  }
+  // Friend requests
+  try {
+    const reqs = await api('/api/friends/requests');
+    if (reqs.length) {
+      html += `<div class="section-title">新的好友请求 (${reqs.length})</div>`;
+      for (const r of reqs) {
+        html += `<div class="contact-item">
+          <div class="contact-av">${r.avatar||'😀'}</div>
+          <div style="flex:1;margin-left:12px">
+            <div class="contact-name" style="margin-left:0">${esc(r.nickname)}</div>
+            <div style="font-size:13px;color:var(--text-sub)">${esc(r.message||'请求加你为好友')}</div>
+          </div>
+          <button style="background:var(--green);color:#fff;border:none;padding:6px 16px;border-radius:4px;font-size:14px;cursor:pointer" onclick="handleFriendRequest('${r.id}','accept')">接受</button>
+        </div>`;
+      }
+    }
+  } catch(e) {}
+
   if (S.curGroup) {
     try {
       const ms = await api(`/api/groups/${S.curGroup}/members`);
       html += '<div class="section-title">群成员</div>';
       ms.forEach(m => {
-        html += `<div class="contact-item"><div class="contact-av">${m.avatar}</div><div class="contact-name">${esc(m.name)}${m.is_agent?'<span class="contact-badge">AI</span>':''}</div></div>`;
+        const avHtml = m.avatar_url ? `<img src="${m.avatar_url}">` : m.avatar;
+        html += `<div class="contact-item">
+          <div class="contact-av">${avHtml}</div>
+          <div class="contact-name">${esc(m.name)}${m.is_agent?'<span class="contact-badge">AI</span>':''}</div>
+          <div style="font-size:12px;color:var(--text-sub)">${esc(m.signature||'')}</div>
+        </div>`;
       });
     } catch(e) {}
   }
   $('panelContact').innerHTML = html;
 }
-
-// ==================== 我的 ====================
-function renderProfile() {
-  const u = S.user||{};
-  $('panelProfile').innerHTML = `
-    <div class="profile-hd">
-      <div class="profile-av">${u.avatar||'😀'}</div>
-      <div class="profile-info"><h2>${esc(u.nickname||u.username||'-')}</h2><p>微信号：${esc(u.email||'-')}</p></div>
-    </div>
-    <div class="profile-section">
-      <div class="profile-row" onclick="showModal('refineModal')"><span class="icon">🧪</span><span class="label">炼化数字人</span><span class="arrow">›</span></div>
-      <div class="profile-row"><span class="icon">🤖</span><span class="label">我的数字人</span><span class="arrow">›</span></div>
-      <div class="profile-row"><span class="icon">🧠</span><span class="label">记忆库</span><span class="arrow">›</span></div>
-      <div class="profile-row"><span class="icon">⚙️</span><span class="label">设置</span><span class="arrow">›</span></div>
-    </div>
-    <button class="logout-btn" onclick="doLogout()">退出登录</button>`;
+async function handleFriendRequest(rid, action) {
+  try {
+    await api('/api/friends/requests/handle', {method:'POST', body:JSON.stringify({request_id:rid, action})});
+    toast(action==='accept' ? '已添加好友' : '已拒绝');
+    await loadFriends();
+    loadContacts();
+  } catch(e) { toast(e.message); }
 }
 
-// ==================== Agent ====================
+// ==================== Friends ====================
+async function loadFriends() {
+  try { S.friends = await api('/api/friends'); } catch(e) {}
+}
+
+// ==================== Profile ====================
+function renderProfile() {
+  const u = S.user||{};
+  const avHtml = u.avatar_url ? `<img src="${u.avatar_url}">` : (u.avatar||'😀');
+  $('panelProfile').innerHTML = `
+    <div class="profile-hd">
+      <div class="profile-av">${avHtml}</div>
+      <div class="profile-info"><h2>${esc(u.nickname||u.username||'-')}</h2><p>${esc(u.signature||u.email||'')}</p></div>
+    </div>
+    <div class="profile-section">
+      <div class="profile-row" onclick="loadMoments();showPage('momentsPage')"><span class="icon">📷</span><span class="label">朋友圈</span><span class="arrow">›</span></div>
+      <div class="profile-row" onclick="showModal('refineModal')"><span class="icon">🧪</span><span class="label">炼化数字人</span><span class="arrow">›</span></div>
+      <div class="profile-row" onclick="loadFavorites();showPage('favoritesPage')"><span class="icon">⭐</span><span class="label">收藏</span><span class="arrow">›</span></div>
+      <div class="profile-row" onclick="showPage('settingsPage')"><span class="icon">⚙️</span><span class="label">设置</span><span class="arrow">›</span></div>
+    </div>`;
+}
+
+// ==================== Agents ====================
 async function loadAgents() {
   try { S.agents = await api('/api/agents'); } catch(e) {}
+  // Populate refine select
+  const sel = $('refineAgentSelect');
+  if (sel) {
+    sel.innerHTML = S.agents.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+  }
+}
+function showAgentDetail(id) {
+  // TODO: agent detail page
+  toast('数字人详情');
 }
 async function doRefine() {
   const text = $('refineText').value.trim();
-  const agentId = S.user?.agent_id||'';
+  const agentId = $('refineAgentSelect').value;
   if (!text) return toast('请输入内容');
-  if (!agentId) return toast('无关联Agent');
+  if (!agentId) return toast('请选择数字人');
   try {
-    const d = await api('/api/agent/refine/text', {method:'POST', body:JSON.stringify({agent_id:agentId, text, source:'text'})});
+    const d = await api('/api/agents/refine/text', {method:'POST', body:JSON.stringify({agent_id:agentId, text, source:'text'})});
     closeModal($('refineModal'));
     toast(d.message||'炼化完成');
     $('refineText').value='';
   } catch(e) { toast(e.message); }
 }
 
-// ==================== 聊天 ====================
+// ==================== Chat ====================
 async function openChat(id, name, av) {
   S.curGroup = id; S.curGroupName = name;
+  S.replyTo = null;
+  pageStack.push('chatPage');
   $('chatTitle').textContent = name;
   showPage('chatPage');
   $('msgList').innerHTML = '<div class="empty"><span class="icon">⏳</span><p>加载中...</p></div>';
@@ -561,23 +800,60 @@ function renderMsgs(msgs) {
 }
 
 function buildMsg(m) {
+  if (m.msg_type === 'system') return `<div class="msg-system"><span>${esc(m.content)}</span></div>`;
+
   const isMe = m.sender_id === S.user?.id;
   const side = isMe ? 'right' : 'left';
-  const av = m.is_agent ? (m.agent_avatar||'🤖') : '😀';
+  const av = m.is_agent ? (m.agent_avatar||'🤖') : (m.sender_avatar||'😀');
+  const avHtml = (m.sender_avatar_url||'').startsWith('/') ? `<img src="${m.sender_avatar_url}">` : av;
   const tag = m.is_agent ? '<span class="msg-tag">AI</span>' : '';
+
+  // Reply quote
+  let replyHtml = '';
+  if (m.reply_to && m.reply_content) {
+    replyHtml = `<div class="msg-reply" onclick="scrollToMsg('${m.reply_to}')">↩ ${esc(m.reply_content)}</div>`;
+  }
+
+  // Forward
+  let forwardHtml = '';
+  if (m.forwarded_from) {
+    forwardHtml = `<div class="msg-forward">↪ 转发: ${esc(m.forwarded_from)}</div>`;
+  }
+
+  // Bubble content
   let bubble = '';
-  if (m.msg_type==='voice' && m.voice_url) {
-    bubble = `<div class="voice-bubble" onclick="playVoice(this,'${m.voice_url}')"><span class="icon">🔊</span><div class="voice-wave"><span></span><span></span><span></span><span></span><span></span></div><span class="voice-dur">语音</span></div>`;
-  } else if (m.msg_type==='image') {
-    bubble = `<img class="msg-img" src="${m.content}" onclick="window.open(this.src)" onerror="this.style.display='none'">`;
+  if (m.msg_type === 'voice' && m.media_url) {
+    bubble = `<div class="voice-bubble" onclick="playVoice(this,'${m.media_url}')"><span>🔊</span><div class="voice-wave"><span></span><span></span><span></span><span></span><span></span></div><span style="font-size:12px;color:var(--text-sub)">语音</span></div>`;
+  } else if (m.msg_type === 'image') {
+    bubble = `<img class="msg-img" src="${m.media_url||m.content}" onclick="window.open(this.src)" onerror="this.style.display='none'">`;
+  } else if (m.msg_type === 'file') {
+    const sz = m.file_size > 1048576 ? (m.file_size/1048576).toFixed(1)+'MB' : (m.file_size/1024).toFixed(0)+'KB';
+    bubble = `<div class="msg-file"><span class="file-icon">📄</span><div class="file-info"><div class="file-name">${esc(m.file_name||'文件')}</div><div class="file-size">${sz}</div></div></div>`;
+  } else if (m.msg_type === 'red_envelope') {
+    bubble = `<div class="msg-red-envelope" onclick="openRedEnvelope('${m.id}')"><span class="re-icon">🧧</span><div class="re-title">红包</div><div class="re-greeting">${esc(m.content)}</div></div>`;
   } else {
     bubble = esc(m.content);
   }
-  return `<div class="msg-row ${side}">
-    <div class="msg-av">${av}</div>
+
+  // Reactions
+  let reactionsHtml = '';
+  if (m.reactions && m.reactions.length) {
+    const grouped = {};
+    m.reactions.forEach(r => { grouped[r.emoji] = (grouped[r.emoji]||0) + 1; });
+    reactionsHtml = '<div class="msg-reactions">' +
+      Object.entries(grouped).map(([emoji, count]) =>
+        `<span class="reaction" onclick="toggleReaction('${m.id}','${emoji}')">${emoji}${count>1?count:''}</span>`
+      ).join('') + '</div>';
+  }
+
+  return `<div class="msg-row ${side}" id="msg-${m.id}" oncontextmenu="showMsgMenu(event,'${m.id}','${m.sender_id}','${esc(m.content)}','${m.msg_type}','${m.media_url||''}','${m.sender_name||''}')">
+    <div class="msg-av" onclick="showUserInfo('${m.sender_id}')">${avHtml}</div>
     <div class="msg-content">
       <div class="msg-name">${tag}${esc(m.sender_name)}</div>
+      ${forwardHtml}
+      ${replyHtml}
       <div class="msg-bubble">${bubble}</div>
+      ${reactionsHtml}
       <div class="msg-time">${fmtTime(m.created_at)}</div>
     </div>
   </div>`;
@@ -592,23 +868,93 @@ function appendMsg(m) {
   el.scrollTop = el.scrollHeight;
 }
 
+function scrollToMsg(id) {
+  const el = $('msg-'+id);
+  if (el) { el.scrollIntoView({behavior:'smooth',block:'center'}); el.style.background='rgba(7,193,96,.1)'; setTimeout(()=>el.style.background='',1500); }
+}
+
 function showTyping(name) {
+  if ($('typing-'+name)) return;
   const el = $('msgList');
   el.insertAdjacentHTML('beforeend', `<div class="msg-row left" id="typing-${name}"><div class="msg-av">🤖</div><div class="msg-content"><div class="msg-name">${name}</div><div class="msg-bubble"><div class="typing-dots"><span></span><span></span><span></span></div></div></div></div>`);
   el.scrollTop = el.scrollHeight;
 }
 function removeTyping(name) { const e=$('typing-'+name); if(e)e.remove(); }
 
-// ==================== 发送 ====================
+// ==================== Message Context Menu ====================
+let ctxMenuEl = null;
+function showMsgMenu(e, msgId, senderId, content, msgType, mediaUrl, senderName) {
+  e.preventDefault();
+  hideCtxMenu();
+  const items = [];
+  items.push({icon:'↩', label:'回复', action:`setReply('${msgId}','${esc(content)}','${esc(senderName)}')`});
+  items.push({icon:'📋', label:'复制', action:`copyText('${esc(content)}')`});
+  if (senderId === S.user?.id) {
+    items.push({icon:'🗑️', label:'撤回', action:`recallMsg('${msgId}')`});
+  }
+  items.push({icon:'↪', label:'转发', action:`showForward('${msgId}')`});
+  items.push({icon:'⭐', label:'收藏', action:`favMsg('${msgId}','${esc(content)}','${msgType}','${mediaUrl}','${esc(senderName)}')`});
+  items.push({icon:'📌', label:'置顶', action:`pinMsg('${msgId}')`});
+
+  ctxMenuEl = document.createElement('div');
+  ctxMenuEl.className = 'ctx-menu';
+  ctxMenuEl.style.left = Math.min(e.clientX, window.innerWidth-150) + 'px';
+  ctxMenuEl.style.top = Math.min(e.clientY, window.innerHeight-200) + 'px';
+  ctxMenuEl.innerHTML = items.map(i => `<div class="ctx-item" onclick="${i.action};hideCtxMenu()">${i.icon} ${i.label}</div>`).join('');
+  document.body.appendChild(ctxMenuEl);
+  setTimeout(() => document.addEventListener('click', hideCtxMenu, {once:true}), 10);
+}
+function hideCtxMenu() { if(ctxMenuEl){ctxMenuEl.remove();ctxMenuEl=null;} }
+
+function setReply(msgId, content, name) {
+  S.replyTo = {id:msgId, content, name};
+  $('msgInput').placeholder = `回复 ${name}: ${content.substring(0,20)}...`;
+  $('msgInput').focus();
+}
+function copyText(text) { navigator.clipboard?.writeText(text); toast('已复制'); }
+async function recallMsg(id) {
+  try { await api('/api/messages/recall', {method:'POST', body:JSON.stringify({message_id:id})}); toast('已撤回'); } catch(e) { toast(e.message); }
+}
+function showForward(msgId) {
+  const list = $('forwardList');
+  list.innerHTML = S.groups.map(g => `<div class="forward-item" onclick="doForward('${msgId}','${g.id}')"><div class="av">${g.avatar||'👥'}</div><div class="nm">${esc(g.name)}</div></div>`).join('');
+  showModal('forwardModal');
+}
+async function doForward(msgId, groupId) {
+  try {
+    await api('/api/messages/forward', {method:'POST', body:JSON.stringify({message_id:msgId, target_group_id:groupId})});
+    closeModal($('forwardModal'));
+    toast('已转发');
+  } catch(e) { toast(e.message); }
+}
+async function favMsg(id, content, type, url, name) {
+  try {
+    await api('/api/favorites', {method:'POST', body:JSON.stringify({message_id:id, content, msg_type:type, media_url:url, source_name:name})});
+    toast('已收藏');
+  } catch(e) { toast(e.message); }
+}
+async function pinMsg(id) {
+  try { await api(`/api/messages/${id}/pin`, {method:'POST'}); toast('已置顶'); } catch(e) { toast(e.message); }
+}
+async function toggleReaction(msgId, emoji) {
+  try { await api(`/api/messages/${msgId}/reactions`, {method:'POST', body:JSON.stringify({emoji})}); } catch(e) {}
+}
+
+// ==================== Send Messages ====================
 async function sendText() {
   const input = $('msgInput');
   const text = input.value.trim();
   if (!text||!S.curGroup) return;
   input.value=''; input.style.height='auto';
+  input.placeholder='消息';
   $('sendBtn').disabled = true;
+
+  const body = {group_id:S.curGroup, content:text, msg_type:'text'};
+  if (S.replyTo) { body.reply_to = S.replyTo.id; S.replyTo = null; }
+
   try {
-    const d = await api('/api/messages', {method:'POST', body:JSON.stringify({group_id:S.curGroup, content:text, msg_type:'text'})});
-    appendMsg({id:d.id, sender_id:S.user.id, sender_name:S.user.nickname, content:text, msg_type:'text', is_agent:false, created_at:d.created_at});
+    const d = await api('/api/messages', {method:'POST', body:JSON.stringify(body)});
+    appendMsg({id:d.id, sender_id:S.user.id, sender_name:S.user.nickname, sender_avatar:S.user.avatar, content:text, msg_type:'text', is_agent:false, created_at:d.created_at, reply_to:body.reply_to||'', reply_content:'', reactions:[]});
   } catch(e) { toast('发送失败'); }
   $('sendBtn').disabled = false;
   input.focus();
@@ -620,7 +966,15 @@ function onKey(e) {
 }
 function autoGrow(el) { el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,120)+'px'; }
 
-// ==================== 图片 ====================
+let typingTimer;
+function sendTyping() {
+  if (!S.ws || !S.curGroup) return;
+  clearTimeout(typingTimer);
+  S.ws.send(JSON.stringify({type:'typing', group_id:S.curGroup, name:S.user.nickname}));
+  typingTimer = setTimeout(()=>{}, 2000);
+}
+
+// ==================== Image & File ====================
 async function sendImage(input) {
   const file = input.files[0];
   if (!file||!S.curGroup) return;
@@ -628,13 +982,25 @@ async function sendImage(input) {
   try {
     const r = await fetch('/api/upload/image', {method:'POST', headers:{'Authorization':'Bearer '+S.token}, body:form});
     const d = await r.json();
-    await api('/api/messages', {method:'POST', body:JSON.stringify({group_id:S.curGroup, content:d.url, msg_type:'image'})});
-    appendMsg({id:Date.now(), sender_id:S.user.id, sender_name:S.user.nickname, content:d.url, msg_type:'image', is_agent:false, created_at:Date.now()/1000});
+    await api('/api/messages', {method:'POST', body:JSON.stringify({group_id:S.curGroup, content:'[图片]', msg_type:'image', media_url:d.url})});
+    appendMsg({id:Date.now(), sender_id:S.user.id, sender_name:S.user.nickname, sender_avatar:S.user.avatar, content:'[图片]', msg_type:'image', media_url:d.url, is_agent:false, created_at:Date.now()/1000, reactions:[]});
+  } catch(e) { toast('上传失败'); }
+  input.value='';
+}
+async function sendFile(input) {
+  const file = input.files[0];
+  if (!file||!S.curGroup) return;
+  const form = new FormData(); form.append('file', file);
+  try {
+    const r = await fetch('/api/upload/file', {method:'POST', headers:{'Authorization':'Bearer '+S.token}, body:form});
+    const d = await r.json();
+    await api('/api/messages', {method:'POST', body:JSON.stringify({group_id:S.curGroup, content:'[文件]', msg_type:'file', media_url:d.url, file_name:d.filename, file_size:d.size})});
+    appendMsg({id:Date.now(), sender_id:S.user.id, sender_name:S.user.nickname, sender_avatar:S.user.avatar, content:'[文件]', msg_type:'file', media_url:d.url, file_name:d.filename, file_size:d.size, is_agent:false, created_at:Date.now()/1000, reactions:[]});
   } catch(e) { toast('上传失败'); }
   input.value='';
 }
 
-// ==================== 语音 ====================
+// ==================== Voice ====================
 let recorder=null, chunks=[];
 function toggleVoice() {
   S.voiceMode = !S.voiceMode;
@@ -666,8 +1032,8 @@ async function recStop() {
     try {
       const r = await fetch('/api/voice/upload', {method:'POST', headers:{'Authorization':'Bearer '+S.token}, body:form});
       const d = await r.json();
-      await api('/api/messages', {method:'POST', body:JSON.stringify({group_id:S.curGroup, content:'[语音消息]', msg_type:'voice', voice_url:d.url})});
-      appendMsg({id:Date.now(), sender_id:S.user.id, sender_name:S.user.nickname, content:'[语音消息]', msg_type:'voice', voice_url:d.url, is_agent:false, created_at:Date.now()/1000});
+      await api('/api/messages', {method:'POST', body:JSON.stringify({group_id:S.curGroup, content:'[语音消息]', msg_type:'voice', media_url:d.url})});
+      appendMsg({id:Date.now(), sender_id:S.user.id, sender_name:S.user.nickname, sender_avatar:S.user.avatar, content:'[语音消息]', msg_type:'voice', media_url:d.url, is_agent:false, created_at:Date.now()/1000, reactions:[]});
     } catch(e) { toast('发送失败'); }
   };
 }
@@ -678,14 +1044,208 @@ function playVoice(el, url) {
   audio.onended = () => el.classList.remove('voice-playing');
 }
 
-// ==================== 表情 ====================
-const EMOJIS = '😀 😂 🤣 😊 😍 🥰 😘 😋 🤔 😅 😢 😭 😡 🥺 😴 🙏 👍 👎 ❤️ 💔 🎉 🎊 💪 👏 🤝 ✌️ 💐 🌹 🎂 🍰 🍜 🍲 🎣 ♟️ 📰 💊'.split(' ');
+// ==================== Emoji ====================
+const EMOJIS = '😀 😂 🤣 😊 😍 🥰 😘 😋 🤔 😅 😢 😭 😡 🥺 😴 🙏 👍 👎 ❤️ 💔 🎉 🎊 💪 👏 🤝 ✌️ 💐 🌹 🎂 🍰 🍜 🍲 🎣 ♟️ 📰 💊 🧧 👨 👩 👵 🏠'.split(' ');
 function toggleEmoji() {
   const p = $('emojiPanel');
   if (!p.innerHTML) p.innerHTML = EMOJIS.map(e=>`<span class="emoji-item" onclick="insertEmoji('${e}')">${e}</span>`).join('');
   p.classList.toggle('show');
 }
 function insertEmoji(e) { $('msgInput').value+=e; $('msgInput').focus(); }
+
+// ==================== Red Envelope ====================
+function showRedEnvelope() { showModal('redEnvelopeModal'); }
+async function doSendRedEnvelope() {
+  const amount = parseFloat($('reAmount').value);
+  const greeting = $('reGreeting').value || '恭喜发财';
+  const count = parseInt($('reCount').value) || 1;
+  if (!amount || amount <= 0) return toast('请输入金额');
+  try {
+    await api('/api/red-envelopes', {method:'POST', body:JSON.stringify({group_id:S.curGroup, amount, count, greeting})});
+    closeModal($('redEnvelopeModal'));
+    $('reAmount').value=''; toast('红包已发出');
+  } catch(e) { toast(e.message); }
+}
+async function openRedEnvelope(msgId) {
+  // Find the envelope - simplified: just show toast
+  toast('红包功能需要关联红包ID');
+}
+
+// ==================== Group Info ====================
+async function showGroupInfo() {
+  if (!S.curGroup) return;
+  try {
+    const members = await api(`/api/groups/${S.curGroup}/members`);
+    $('membersTitle').textContent = `群成员 (${members.length})`;
+    $('memberList').innerHTML = '<div class="member-grid">' + members.map(m => {
+      const avHtml = m.avatar_url ? `<img src="${m.avatar_url}">` : m.avatar;
+      return `<div class="member-item"><div class="av">${avHtml}</div><div class="nm">${esc(m.name)}</div></div>`;
+    }).join('') + '</div>';
+    showModal('membersModal');
+  } catch(e) { toast(e.message); }
+}
+
+// ==================== Moments ====================
+async function loadMoments() {
+  try {
+    const moments = await api('/api/moments');
+    renderMoments(moments);
+  } catch(e) { console.error(e); }
+}
+function renderMoments(moments) {
+  const el = $('momentsList');
+  if (!moments.length) {
+    el.innerHTML = '<div class="empty" style="height:auto;padding:60px 0"><span class="icon">📷</span><p>暂无动态</p></div>';
+    return;
+  }
+  el.innerHTML = moments.map(m => {
+    let imgHtml = '';
+    if (m.images && m.images.length) {
+      const cls = 'g'+Math.min(m.images.length,6);
+      imgHtml = `<div class="moment-images ${cls}">${m.images.map(i=>`<img src="${i}" onclick="window.open(this.src)">`).join('')}</div>`;
+    }
+    let likesHtml = '';
+    if (m.likes.length) {
+      likesHtml = `<div class="moment-likes">❤️ ${m.likes.map(l=>esc(l.user_name)).join('、')}</div>`;
+    }
+    let commentsHtml = m.comments.map(c => `<div class="moment-comment"><span class="name">${esc(c.user_name)}</span>${esc(c.content)}</div>`).join('');
+
+    const avHtml = m.avatar_url ? `<img src="${m.avatar_url}">` : m.avatar;
+    return `<div class="moment-item">
+      <div class="moment-header">
+        <div class="moment-av">${avHtml}</div>
+        <div class="moment-name">${esc(m.nickname)}</div>
+      </div>
+      <div class="moment-text">${esc(m.content)}</div>
+      ${imgHtml}
+      <div class="moment-actions">
+        <div class="moment-time">${fmtTime(m.created_at)}</div>
+        <div class="moment-btns">
+          <button onclick="likeMoment('${m.id}')">${m.my_like?'❤️':'🤍'} ${m.like_count||''}</button>
+          <button onclick="commentMoment('${m.id}')">💬 ${m.comment_count||''}</button>
+        </div>
+      </div>
+      ${likesHtml}${commentsHtml}
+    </div>`;
+  }).join('');
+}
+async function likeMoment(id) {
+  try { await api(`/api/moments/${id}/like`, {method:'POST'}); loadMoments(); } catch(e) {}
+}
+function commentMoment(id) {
+  const text = prompt('评论:');
+  if (text) api(`/api/moments/${id}/comment`, {method:'POST', body:JSON.stringify({content:text})}).then(()=>loadMoments());
+}
+function previewMomentImgs(input) {
+  S.momentImgs = [];
+  const el = $('momentImgs');
+  el.innerHTML = '';
+  Array.from(input.files).forEach(f => {
+    const url = URL.createObjectURL(f);
+    S.momentImgs.push(f);
+    el.innerHTML += `<img src="${url}" style="width:60px;height:60px;object-fit:cover;border-radius:4px">`;
+  });
+}
+async function doPublishMoment() {
+  const text = $('momentText').value.trim();
+  if (!text && !S.momentImgs.length) return toast('请输入内容');
+  const images = [];
+  for (const f of S.momentImgs) {
+    const form = new FormData(); form.append('file', f);
+    try {
+      const r = await fetch('/api/moments/upload', {method:'POST', headers:{'Authorization':'Bearer '+S.token}, body:form});
+      const d = await r.json();
+      images.push(d.url);
+    } catch(e) {}
+  }
+  try {
+    await api('/api/moments', {method:'POST', body:JSON.stringify({content:text, images})});
+    closeModal($('composeMomentModal'));
+    $('momentText').value=''; $('momentImgs').innerHTML=''; S.momentImgs=[];
+    loadMoments();
+    toast('已发表');
+  } catch(e) { toast(e.message); }
+}
+
+// ==================== Favorites ====================
+async function loadFavorites() {
+  try {
+    const favs = await api('/api/favorites');
+    const el = $('favoritesList');
+    if (!favs.length) {
+      el.innerHTML = '<div class="empty"><span class="icon">⭐</span><p>暂无收藏</p></div>';
+      return;
+    }
+    el.innerHTML = favs.map(f => {
+      let content = esc(f.content);
+      if (f.msg_type === 'image') content = `<img src="${f.media_url}" style="max-width:100px;border-radius:4px">`;
+      return `<div class="contact-item"><div style="flex:1"><div style="font-size:15px">${content}</div><div style="font-size:12px;color:var(--text-sub);margin-top:4px">${esc(f.source_name||'')} · ${fmtTime(f.created_at)}</div></div></div>`;
+    }).join('');
+  } catch(e) {}
+}
+
+// ==================== Search ====================
+async function doSearch(q) {
+  clearTimeout(S.searchTimer);
+  if (!q.trim()) { $('searchResults').innerHTML=''; return; }
+  S.searchTimer = setTimeout(async () => {
+    try {
+      const r = await api(`/api/search?q=${encodeURIComponent(q)}`);
+      let html = '';
+      if (r.contacts.length) {
+        html += '<div class="search-group"><div class="search-group-title">联系人</div>';
+        html += r.contacts.map(c => `<div class="search-item"><div class="contact-av">${c.avatar}</div><div style="margin-left:12px"><div>${esc(c.nickname)}</div><div style="font-size:13px;color:var(--text-sub)">${esc(c.signature||'')}</div></div></div>`).join('');
+        html += '</div>';
+      }
+      if (r.groups.length) {
+        html += '<div class="search-group"><div class="search-group-title">群组</div>';
+        html += r.groups.map(g => `<div class="search-item" onclick="openChat('${g.id}','${esc(g.name)}','${g.avatar}')"><div class="contact-av">${g.avatar}</div><div style="margin-left:12px">${esc(g.name)}</div></div>`).join('');
+        html += '</div>';
+      }
+      if (r.messages.length) {
+        html += '<div class="search-group"><div class="search-group-title">聊天记录</div>';
+        html += r.messages.map(m => `<div class="search-item" onclick="openChat('${m.group_id}','${esc(m.group_name)}','')"><div style="flex:1"><div style="font-size:15px">${esc(m.content)}</div><div style="font-size:12px;color:var(--text-sub)">${esc(m.sender_name)} · ${esc(m.group_name)} · ${fmtTime(m.created_at)}</div></div></div>`).join('');
+        html += '</div>';
+      }
+      if (!html) html = '<div class="empty" style="height:auto;padding:40px"><p>无搜索结果</p></div>';
+      $('searchResults').innerHTML = html;
+    } catch(e) {}
+  }, 300);
+}
+
+// ==================== LLM Config ====================
+async function doSaveLLMConfig() {
+  try {
+    await api('/api/config/llm', {method:'POST', body:JSON.stringify({
+      provider: $('llmProvider').value,
+      api_key: $('llmApiKey').value,
+      model: $('llmModel').value,
+      base_url: $('llmBaseUrl').value,
+    })});
+    closeModal($('llmConfigModal'));
+    toast('AI 配置已保存');
+  } catch(e) { toast(e.message); }
+}
+
+// ==================== Pinned Messages ====================
+async function showPinned() {
+  if (!S.curGroup) return;
+  try {
+    const pinned = await api(`/api/messages/${S.curGroup}/pinned`);
+    const el = $('pinnedList');
+    if (!pinned.length) {
+      el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-sub)">暂无置顶消息</div>';
+    } else {
+      el.innerHTML = pinned.map(p => `<div class="contact-item"><div style="flex:1"><div style="font-size:14px">${esc(p.content)}</div><div style="font-size:12px;color:var(--text-sub)">${esc(p.sender_name)} · ${fmtTime(p.created_at)}</div></div></div>`).join('');
+    }
+    showModal('pinnedModal');
+  } catch(e) { toast(e.message); }
+}
+
+// ==================== User Info ====================
+function showUserInfo(userId) {
+  // TODO: user info card
+}
 
 // ==================== WebSocket ====================
 function connectWS() {
@@ -697,37 +1257,55 @@ function connectWS() {
     try {
       const msg = JSON.parse(e.data);
       if (msg.type==='message'&&msg.data) {
-        if (msg.data.is_agent && msg.data.group_id===S.curGroup) {
-          showTyping(msg.data.sender_name);
-          setTimeout(()=>appendMsg(msg.data), 1500);
-        } else if (msg.data.group_id===S.curGroup) {
-          appendMsg(msg.data);
+        if (msg.data.group_id===S.curGroup) {
+          if (msg.data.is_agent) {
+            showTyping(msg.data.sender_name);
+            setTimeout(()=>{ removeTyping(msg.data.sender_name); appendMsg(msg.data); }, 1500);
+          } else {
+            appendMsg(msg.data);
+          }
         }
-        // 更新列表预览
+        // Update group list preview
         const g = S.groups.find(g=>g.id===msg.data.group_id);
-        if (g) { g.last_message=msg.data.content; g.last_time=msg.data.created_at; renderGroups(); }
+        if (g) {
+          g.last_message = msg.data.msg_type==='image'?'[图片]':msg.data.msg_type==='voice'?'[语音]':msg.data.content;
+          g.last_time = msg.data.created_at;
+          renderGroups();
+        }
+      } else if (msg.type==='typing') {
+        // Show typing indicator
+      } else if (msg.type==='recall') {
+        // Refresh messages
+        if (S.curGroup) api(`/api/messages/${S.curGroup}?limit=100`).then(renderMsgs);
+      } else if (msg.type==='reaction') {
+        // Refresh messages
+      } else if (msg.type==='pat') {
+        toast(`${msg.data.from} ${msg.data.action} ${msg.data.to}`);
+      } else if (msg.type==='red_envelope') {
+        toast(`${msg.data.sender} 发了一个红包 🧧`);
       }
     } catch(err) {}
   };
   ws.onclose = () => setTimeout(connectWS, 3000);
 }
 
-// ==================== 工具 ====================
-function esc(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+// ==================== Utils ====================
+function esc(s) { if(!s)return''; const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
 function fmtTime(ts) {
   if (!ts) return '';
   const d = new Date(ts*1000), now = new Date();
   const hm = d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');
   if (d.toDateString()===now.toDateString()) return hm;
+  const yesterday = new Date(now); yesterday.setDate(yesterday.getDate()-1);
+  if (d.toDateString()===yesterday.toDateString()) return '昨天 '+hm;
   return (d.getMonth()+1)+'/'+d.getDate()+' '+hm;
 }
-function goBack() { showPage('mainPage'); S.curGroup=null; loadGroups(); }
 
-// ==================== 初始化 ====================
+// ==================== Init ====================
 (async()=>{
   if (S.token&&S.user) {
     try { await api('/api/me'); enterApp(); } catch { doLogout(); }
-  } else { showPage('loginPage'); }
+  } else { pageStack=['loginPage']; showPage('loginPage'); }
 })();
 </script>
 </body>

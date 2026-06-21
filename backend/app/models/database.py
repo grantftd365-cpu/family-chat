@@ -1,36 +1,47 @@
-"""数据库模型和初始化 - 完整版"""
+"""数据库模型和初始化 - v2.0 全功能版"""
 import aiosqlite
 import time
 import uuid
 from pathlib import Path
-from typing import Optional
 
 DB_PATH = "data/familychat.db"
 
 
 async def init_db():
-    """初始化数据库"""
+    """初始化数据库 - 完整 schema"""
     Path("data").mkdir(exist_ok=True)
+    Path("data/uploads").mkdir(exist_ok=True)
+    Path("data/voices").mkdir(exist_ok=True)
+    Path("data/avatars").mkdir(exist_ok=True)
+    Path("data/backups").mkdir(exist_ok=True)
+
     db = await aiosqlite.connect(DB_PATH)
-    
     await db.executescript("""
         -- ==================== 用户表 ====================
         CREATE TABLE IF NOT EXISTS users (
             id TEXT PRIMARY KEY,
-            email TEXT UNIQUE NOT NULL,          -- 邮箱（登录凭证）
-            username TEXT UNIQUE NOT NULL,        -- 用户名
-            nickname TEXT NOT NULL,               -- 显示昵称
+            email TEXT UNIQUE NOT NULL,
+            username TEXT UNIQUE NOT NULL,
+            nickname TEXT NOT NULL,
             password_hash TEXT NOT NULL,
             avatar TEXT DEFAULT '😀',
+            avatar_url TEXT DEFAULT '',
             phone TEXT DEFAULT '',
-            role TEXT DEFAULT 'member',           -- member / admin
-            agent_id TEXT DEFAULT '',             -- 关联的 Agent ID
+            signature TEXT DEFAULT '',
+            gender TEXT DEFAULT '',
+            region TEXT DEFAULT '',
+            role TEXT DEFAULT 'member',
+            agent_id TEXT DEFAULT '',
             status TEXT DEFAULT 'active',
+            online_status TEXT DEFAULT 'offline',
+            last_seen REAL DEFAULT 0,
+            settings TEXT DEFAULT '{}',
             created_at REAL NOT NULL,
             updated_at REAL NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-        
+        CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+
         -- ==================== 群组表 ====================
         CREATE TABLE IF NOT EXISTS groups (
             id TEXT PRIMARY KEY,
@@ -38,146 +49,241 @@ async def init_db():
             avatar TEXT DEFAULT '👥',
             owner_id TEXT NOT NULL,
             description TEXT DEFAULT '',
-            group_type TEXT DEFAULT 'family',     -- family / custom
-            created_at REAL NOT NULL
+            group_type TEXT DEFAULT 'family',
+            announcement TEXT DEFAULT '',
+            mute_all INTEGER DEFAULT 0,
+            max_members INTEGER DEFAULT 500,
+            created_at REAL NOT NULL,
+            updated_at REAL DEFAULT 0
         );
-        
+
         -- ==================== 群成员表 ====================
         CREATE TABLE IF NOT EXISTS group_members (
             group_id TEXT NOT NULL,
-            user_id TEXT NOT NULL,                -- 用户ID 或 AgentID
-            role TEXT DEFAULT 'member',           -- owner / member / agent
-            nickname TEXT DEFAULT '',              -- 群内昵称
+            user_id TEXT NOT NULL,
+            role TEXT DEFAULT 'member',
+            nickname TEXT DEFAULT '',
+            muted_until REAL DEFAULT 0,
             joined_at REAL NOT NULL,
             PRIMARY KEY (group_id, user_id)
         );
-        
+
         -- ==================== 消息表 ====================
         CREATE TABLE IF NOT EXISTS messages (
             id TEXT PRIMARY KEY,
             group_id TEXT NOT NULL,
             sender_id TEXT NOT NULL,
             sender_name TEXT NOT NULL,
+            sender_avatar TEXT DEFAULT '',
             content TEXT NOT NULL,
-            msg_type TEXT DEFAULT 'text',         -- text / voice / image / system / emoji
-            media_url TEXT DEFAULT '',             -- 媒体文件URL
+            msg_type TEXT DEFAULT 'text',
+            media_url TEXT DEFAULT '',
+            file_name TEXT DEFAULT '',
+            file_size INTEGER DEFAULT 0,
             is_agent INTEGER DEFAULT 0,
-            reply_to TEXT DEFAULT '',              -- 回复的消息ID
+            reply_to TEXT DEFAULT '',
+            reply_content TEXT DEFAULT '',
+            forwarded_from TEXT DEFAULT '',
+            recalled INTEGER DEFAULT 0,
+            pinned INTEGER DEFAULT 0,
+            extra TEXT DEFAULT '{}',
             created_at REAL NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_messages_group ON messages(group_id, created_at);
         CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id);
-        
-        -- ==================== Agent 表 (数字人) ====================
+
+        -- ==================== 消息表情回复 ====================
+        CREATE TABLE IF NOT EXISTS message_reactions (
+            id TEXT PRIMARY KEY,
+            message_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            emoji TEXT NOT NULL,
+            created_at REAL NOT NULL,
+            UNIQUE(message_id, user_id, emoji)
+        );
+
+        -- ==================== 收藏消息 ====================
+        CREATE TABLE IF NOT EXISTS favorites (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            message_id TEXT DEFAULT '',
+            content TEXT NOT NULL,
+            msg_type TEXT DEFAULT 'text',
+            media_url TEXT DEFAULT '',
+            source_name TEXT DEFAULT '',
+            created_at REAL NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_favorites_user ON favorites(user_id);
+
+        -- ==================== Agent 表 ====================
         CREATE TABLE IF NOT EXISTS agents (
             id TEXT PRIMARY KEY,
-            user_id TEXT DEFAULT '',              -- 关联的用户ID（真人绑定）
+            user_id TEXT DEFAULT '',
             name TEXT NOT NULL,
             avatar TEXT DEFAULT '🤖',
-            
-            -- 灵魂系统 (Soul)
-            soul TEXT DEFAULT '{}',               -- JSON: 核心价值观、人生信条、情感模式
-            identity TEXT DEFAULT '{}',           -- JSON: 身份认同、角色定位、自我认知
-            
-            -- 性格系统
-            backstory TEXT DEFAULT '',             -- 背景故事
-            speaking_style TEXT DEFAULT '',        -- 说话风格
-            traits TEXT DEFAULT '[]',              -- 性格特征列表
-            interests TEXT DEFAULT '[]',           -- 兴趣爱好
-            catchphrases TEXT DEFAULT '[]',        -- 口头禅
-            humor_style TEXT DEFAULT '',           -- 幽默风格
-            emotional_pattern TEXT DEFAULT '',     -- 情感模式
-            
-            -- 关系网络
-            relationships TEXT DEFAULT '{}',       -- 与其他人的关系
-            
-            -- 语音配置
-            voice_config TEXT DEFAULT '{}',        -- JSON: 语音模型、音色等
-            
-            -- 行为配置
-            behavior TEXT DEFAULT '{}',            -- JSON: 活跃时间、回复概率等
-            
-            -- 状态
+            soul TEXT DEFAULT '{}',
+            identity TEXT DEFAULT '{}',
+            backstory TEXT DEFAULT '',
+            speaking_style TEXT DEFAULT '',
+            traits TEXT DEFAULT '[]',
+            interests TEXT DEFAULT '[]',
+            catchphrases TEXT DEFAULT '[]',
+            humor_style TEXT DEFAULT '',
+            emotional_pattern TEXT DEFAULT '',
+            relationships TEXT DEFAULT '{}',
+            voice_config TEXT DEFAULT '{}',
+            behavior TEXT DEFAULT '{}',
             enabled INTEGER DEFAULT 1,
-            refinement_count INTEGER DEFAULT 0,    -- 炼化次数
+            refinement_count INTEGER DEFAULT 0,
             last_refined_at REAL DEFAULT 0,
+            proactive_config TEXT DEFAULT '{}',
             created_at REAL NOT NULL,
             updated_at REAL NOT NULL
         );
-        CREATE INDEX IF NOT EXISTS idx_agents_user ON agents(user_id);
-        
+
         -- ==================== Agent 记忆表 ====================
         CREATE TABLE IF NOT EXISTS agent_memories (
             id TEXT PRIMARY KEY,
             agent_id TEXT NOT NULL,
-            
-            -- 记忆内容
-            content TEXT NOT NULL,                 -- 记忆内容
-            summary TEXT DEFAULT '',               -- 摘要（用于快速检索）
-            
-            -- 记忆分类
-            memory_type TEXT DEFAULT 'short',      -- short / long / core / episodic
-            category TEXT DEFAULT 'general',       -- general / event / emotion / fact / person / preference
-            
-            -- 重要性与检索
-            importance REAL DEFAULT 0.5,           -- 重要性 0-1
-            emotional_valence REAL DEFAULT 0,      -- 情感倾向 -1(负面) 到 1(正面)
-            access_count INTEGER DEFAULT 0,        -- 被访问次数
-            last_accessed REAL DEFAULT 0,          -- 最后访问时间
-            
-            -- 元数据
-            source TEXT DEFAULT '',                -- 来源 (chat / refinement / manual / system)
-            related_people TEXT DEFAULT '[]',      -- 相关人物
-            tags TEXT DEFAULT '[]',                -- 标签
-            metadata TEXT DEFAULT '{}',            -- 其他元数据
-            
-            -- 时间
-            occurred_at REAL DEFAULT 0,            -- 事件发生时间（可能是过去的事）
+            content TEXT NOT NULL,
+            summary TEXT DEFAULT '',
+            memory_type TEXT DEFAULT 'short',
+            category TEXT DEFAULT 'general',
+            importance REAL DEFAULT 0.5,
+            emotional_valence REAL DEFAULT 0,
+            access_count INTEGER DEFAULT 0,
+            last_accessed REAL DEFAULT 0,
+            source TEXT DEFAULT '',
+            related_people TEXT DEFAULT '[]',
+            tags TEXT DEFAULT '[]',
+            metadata TEXT DEFAULT '{}',
+            occurred_at REAL DEFAULT 0,
             created_at REAL NOT NULL,
-            consolidated INTEGER DEFAULT 0         -- 是否已整理
+            consolidated INTEGER DEFAULT 0
         );
         CREATE INDEX IF NOT EXISTS idx_memories_agent ON agent_memories(agent_id);
         CREATE INDEX IF NOT EXISTS idx_memories_type ON agent_memories(agent_id, memory_type);
-        CREATE INDEX IF NOT EXISTS idx_memories_importance ON agent_memories(agent_id, importance DESC);
-        CREATE INDEX IF NOT EXISTS idx_memories_category ON agent_memories(agent_id, category);
-        
+
         -- ==================== 炼化记录表 ====================
         CREATE TABLE IF NOT EXISTS refinement_logs (
             id TEXT PRIMARY KEY,
             agent_id TEXT NOT NULL,
-            source_type TEXT NOT NULL,             -- text / voice / video / chat_history
+            source_type TEXT NOT NULL,
             source_url TEXT DEFAULT '',
-            extracted_data TEXT DEFAULT '{}',      -- 提取的数据
+            extracted_data TEXT DEFAULT '{}',
             status TEXT DEFAULT 'success',
             created_at REAL NOT NULL
         );
-        
+
         -- ==================== 好友关系表 ====================
         CREATE TABLE IF NOT EXISTS friendships (
             user_id TEXT NOT NULL,
             friend_id TEXT NOT NULL,
             status TEXT DEFAULT 'accepted',
+            remark TEXT DEFAULT '',
             created_at REAL NOT NULL,
             PRIMARY KEY (user_id, friend_id)
         );
+
+        -- ==================== 好友请求表 ====================
+        CREATE TABLE IF NOT EXISTS friend_requests (
+            id TEXT PRIMARY KEY,
+            from_user_id TEXT NOT NULL,
+            to_user_id TEXT NOT NULL,
+            message TEXT DEFAULT '',
+            status TEXT DEFAULT 'pending',
+            created_at REAL NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_fr_req_to ON friend_requests(to_user_id, status);
+
+        -- ==================== 朋友圈表 ====================
+        CREATE TABLE IF NOT EXISTS moments (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            content TEXT DEFAULT '',
+            images TEXT DEFAULT '[]',
+            location TEXT DEFAULT '',
+            visibility TEXT DEFAULT 'all',
+            like_count INTEGER DEFAULT 0,
+            comment_count INTEGER DEFAULT 0,
+            created_at REAL NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_moments_user ON moments(user_id, created_at);
+
+        -- ==================== 朋友圈点赞/评论 ====================
+        CREATE TABLE IF NOT EXISTS moment_interactions (
+            id TEXT PRIMARY KEY,
+            moment_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            user_name TEXT DEFAULT '',
+            interaction_type TEXT NOT NULL,
+            content TEXT DEFAULT '',
+            created_at REAL NOT NULL
+        );
+
+        -- ==================== 红包表 ====================
+        CREATE TABLE IF NOT EXISTS red_envelopes (
+            id TEXT PRIMARY KEY,
+            sender_id TEXT NOT NULL,
+            group_id TEXT DEFAULT '',
+            receiver_id TEXT DEFAULT '',
+            amount REAL NOT NULL,
+            count INTEGER DEFAULT 1,
+            greeting TEXT DEFAULT '恭喜发财',
+            status TEXT DEFAULT 'pending',
+            remaining REAL DEFAULT 0,
+            remaining_count INTEGER DEFAULT 0,
+            created_at REAL NOT NULL
+        );
+
+        -- ==================== 红包领取记录 ====================
+        CREATE TABLE IF NOT EXISTS red_envelope_claims (
+            id TEXT PRIMARY KEY,
+            envelope_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            amount REAL NOT NULL,
+            claimed_at REAL NOT NULL
+        );
+
+        -- ==================== 通知表 ====================
+        CREATE TABLE IF NOT EXISTS notifications (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            type TEXT NOT NULL,
+            title TEXT DEFAULT '',
+            content TEXT DEFAULT '',
+            ref_id TEXT DEFAULT '',
+            is_read INTEGER DEFAULT 0,
+            created_at REAL NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_notif_user ON notifications(user_id, is_read);
+
+        -- ==================== 拍一拍记录 ====================
+        CREATE TABLE IF NOT EXISTS pats (
+            id TEXT PRIMARY KEY,
+            group_id TEXT NOT NULL,
+            from_user_id TEXT NOT NULL,
+            from_user_name TEXT DEFAULT '',
+            to_user_id TEXT NOT NULL,
+            to_user_name TEXT DEFAULT '',
+            action TEXT DEFAULT '拍了拍',
+            created_at REAL NOT NULL
+        );
     """)
-    
+
     await db.commit()
     await db.close()
 
 
 async def get_db() -> aiosqlite.Connection:
-    """获取数据库连接"""
     db = await aiosqlite.connect(DB_PATH)
     db.row_factory = aiosqlite.Row
     return db
 
 
 def gen_id() -> str:
-    """生成短ID"""
     return str(uuid.uuid4())[:12]
 
 
 def now() -> float:
-    """当前时间戳"""
     return time.time()
