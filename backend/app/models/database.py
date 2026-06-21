@@ -276,7 +276,7 @@ async def init_db():
 
 
 async def get_db() -> aiosqlite.Connection:
-    db = await aiosqlite.connect(DB_PATH)
+    db = await aiosqlite.connect(DB_PATH, timeout=30)
     db.row_factory = aiosqlite.Row
     return db
 

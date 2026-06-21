@@ -61,7 +61,7 @@ async def register(req: RegisterReq):
             "backstory": f"{req.nickname}的数字分身",
             "speaking_style": "待炼化 - 通过聊天记录或语音训练",
         }
-        await agent_manager.create_agent(agent_config)
+        await agent_manager.create_agent(agent_config, _db=db)
         await db.execute("UPDATE users SET agent_id=? WHERE id=?", (agent_id, user_id))
 
         # 加入默认群

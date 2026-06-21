@@ -43,7 +43,7 @@ async def lifespan(app: FastAPI):
     agent_manager = AgentManager(db, llm_config)
     await agent_manager.load_agents()
     await ensure_defaults(db, agent_manager)
-    await db.close()
+    # Don't close db — agent_manager holds the reference
 
     logger.info("=" * 50)
     logger.info("🏠 FamilyChat v2.0 已启动！")

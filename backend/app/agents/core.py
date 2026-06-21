@@ -13,6 +13,8 @@ from typing import Optional
 import httpx
 from loguru import logger
 
+from ..models.database import now, gen_id
+
 
 # ==================== 灵魂系统 (Soul) ====================
 
@@ -158,6 +160,10 @@ class AgentMemory:
         self.db = db
         self._short_term: list[dict] = []
 
+    async def _get_db(self):
+        from ..models.database import get_db
+        return await get_db()
+
     async def add(self, content: str, memory_type: str = "short",
                   category: str = "general", importance: float = 0.5,
                   emotional_valence: float = 0, source: str = "",
@@ -177,19 +183,23 @@ class AgentMemory:
             return mid
         
         # 其他记忆存数据库
-        await self.db.execute(
-            """INSERT INTO agent_memories 
-               (id, agent_id, content, summary, memory_type, category, importance,
-                emotional_valence, source, related_people, tags, metadata, occurred_at, created_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (mid, self.agent_id, content, summary or content[:100], memory_type, category,
-             importance, emotional_valence, source,
-             json.dumps(related_people or [], ensure_ascii=False),
-             json.dumps(tags or [], ensure_ascii=False),
-             json.dumps(metadata or {}, ensure_ascii=False),
-             occurred_at or time.time(), time.time())
-        )
-        await self.db.commit()
+        db = await self._get_db()
+        try:
+            await db.execute(
+                """INSERT INTO agent_memories 
+                   (id, agent_id, content, summary, memory_type, category, importance,
+                    emotional_valence, source, related_people, tags, metadata, occurred_at, created_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (mid, self.agent_id, content, summary or content[:100], memory_type, category,
+                 importance, emotional_valence, source,
+                 json.dumps(related_people or [], ensure_ascii=False),
+                 json.dumps(tags or [], ensure_ascii=False),
+                 json.dumps(metadata or {}, ensure_ascii=False),
+                 occurred_at or time.time(), time.time())
+            )
+            await db.commit()
+        finally:
+            await db.close()
         return mid
 
     async def add_short_term(self, content: str, sender: str = ""):
@@ -210,6 +220,7 @@ class AgentMemory:
                      memory_type: str = None, category: str = None) -> list[str]:
         """搜索记忆"""
         results = []
+        db = await self._get_db()
         try:
             sql = "SELECT content, importance FROM agent_memories WHERE agent_id=? AND content LIKE ?"
             params = [self.agent_id, f"%{query}%"]
@@ -224,26 +235,28 @@ class AgentMemory:
             sql += " ORDER BY importance DESC, created_at DESC LIMIT ?"
             params.append(limit)
             
-            async with self.db.execute(sql, params) as cursor:
+            async with db.execute(sql, params) as cursor:
                 rows = await cursor.fetchall()
                 results = [r[0] for r in rows]
                 
-                # 更新访问计数
                 for row in rows:
-                    await self.db.execute(
+                    await db.execute(
                         "UPDATE agent_memories SET access_count=access_count+1, last_accessed=? WHERE agent_id=? AND content=?",
                         (time.time(), self.agent_id, row[0])
                     )
-                await self.db.commit()
+                await db.commit()
         except Exception as e:
             logger.error(f"记忆搜索失败: {e}")
+        finally:
+            await db.close()
         return results
 
     async def get_by_type(self, memory_type: str, limit: int = 20) -> list[dict]:
         """按类型获取记忆"""
         results = []
+        db = await self._get_db()
         try:
-            async with self.db.execute(
+            async with db.execute(
                 "SELECT id, content, importance, category, created_at FROM agent_memories WHERE agent_id=? AND memory_type=? ORDER BY importance DESC LIMIT ?",
                 (self.agent_id, memory_type, limit)
             ) as cursor:
@@ -254,6 +267,8 @@ class AgentMemory:
                     })
         except Exception as e:
             logger.error(f"获取记忆失败: {e}")
+        finally:
+            await db.close()
         return results
 
     def get_context(self, limit: int = 15) -> str:
@@ -268,27 +283,33 @@ class AgentMemory:
     async def get_important(self, limit: int = 10) -> list[str]:
         """获取重要记忆"""
         results = []
+        db = await self._get_db()
         try:
-            async with self.db.execute(
+            async with db.execute(
                 "SELECT content FROM agent_memories WHERE agent_id=? AND importance>=0.7 ORDER BY importance DESC, access_count DESC LIMIT ?",
                 (self.agent_id, limit)
             ) as cursor:
                 results = [r[0] async for r in cursor]
         except:
             pass
+        finally:
+            await db.close()
         return results
 
     async def get_core_memories(self) -> list[str]:
         """获取核心记忆（身份、关系等）"""
         results = []
+        db = await self._get_db()
         try:
-            async with self.db.execute(
+            async with db.execute(
                 "SELECT content FROM agent_memories WHERE agent_id=? AND memory_type='core' ORDER BY importance DESC",
                 (self.agent_id,)
             ) as cursor:
                 results = [r[0] async for r in cursor]
         except:
             pass
+        finally:
+            await db.close()
         return results
 
     async def consolidate(self, llm_client=None):
@@ -304,7 +325,6 @@ class AgentMemory:
                 "分析对话，提取值得记住的重要信息。JSON格式：[{content, importance, category}]",
                 text
             )
-            # 解析并存储
             clean = result.strip()
             if clean.startswith("```"):
                 clean = clean.split("\n", 1)[1].rsplit("```", 1)[0]
@@ -536,41 +556,54 @@ class AgentManager:
         self.llm_config = llm_config
         self.agents: dict[str, DigitalHuman] = {}
 
+    async def _get_db(self):
+        from ..models.database import get_db
+        return await get_db()
+
     async def load_agents(self):
         """从数据库加载所有 Agent"""
-        async with self.db.execute("SELECT * FROM agents WHERE enabled=1") as cursor:
+        db = self.db
+        async with db.execute("SELECT * FROM agents WHERE enabled=1") as cursor:
+            columns = [d[0] for d in cursor.description]
             rows = await cursor.fetchall()
-            for row in rows:
-                agent_id = row[0]
-                
-                # 解析灵魂
-                soul_data = json.loads(row[5]) if row[5] else {}
+
+            def _j(val, default):
+                if not val:
+                    return default
+                try:
+                    return json.loads(val)
+                except (json.JSONDecodeError, TypeError):
+                    return default
+
+            for raw_row in rows:
+                row = dict(zip(columns, raw_row))
+                agent_id = row["id"]
+
+                soul_data = _j(row.get("soul"), {})
                 soul = Soul.from_dict(soul_data) if soul_data else Soul()
-                
-                # 解析身份
-                identity_data = json.loads(row[6]) if row[6] else {}
+
+                identity_data = _j(row.get("identity"), {})
                 identity = Identity.from_dict(identity_data) if identity_data else Identity()
-                
-                # 解析性格
+
                 personality = Personality(
-                    name=row[2], agent_id=agent_id, avatar=row[3] or "",
-                    backstory=row[7] or "", speaking_style=row[8] or "",
-                    traits=json.loads(row[9]) if row[9] else [],
-                    interests=json.loads(row[10]) if row[10] else [],
-                    catchphrases=json.loads(row[11]) if row[11] else [],
-                    humor_style=row[12] or "",
-                    relationships=json.loads(row[13]) if row[13] else {},
+                    name=row["name"], agent_id=agent_id, avatar=row.get("avatar") or "",
+                    backstory=row.get("backstory") or "", speaking_style=row.get("speaking_style") or "",
+                    traits=_j(row.get("traits"), []),
+                    interests=_j(row.get("interests"), []),
+                    catchphrases=_j(row.get("catchphrases"), []),
+                    humor_style=row.get("humor_style") or "",
+                    relationships=_j(row.get("relationships"), {}),
                 )
-                
+
                 self.agents[agent_id] = DigitalHuman(
-                    agent_id=agent_id, name=row[2], db=self.db,
+                    agent_id=agent_id, name=row["name"], db=self.db,
                     llm_config=self.llm_config, soul=soul,
                     identity=identity, personality=personality
                 )
-        
+
         logger.info(f"加载了 {len(self.agents)} 个数字人")
 
-    async def create_agent(self, config: dict) -> str:
+    async def create_agent(self, config: dict, _db=None) -> str:
         """创建新 Agent"""
         agent_id = config.get("id", f"agent_{str(uuid.uuid4())[:8]}")
         ts = now()
@@ -594,26 +627,36 @@ class AgentManager:
             self_description=config.get("self_description", ""),
         )
         
-        await self.db.execute(
-            """INSERT INTO agents (id, user_id, name, avatar, soul, identity, backstory, speaking_style,
-               traits, interests, catchphrases, humor_style, emotional_pattern, relationships, 
-               voice_config, behavior, enabled, created_at, updated_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (agent_id, config.get("user_id", ""), config["name"],
-             config.get("avatar", "🤖"),
-             json.dumps(soul.to_dict(), ensure_ascii=False),
-             json.dumps(identity.to_dict(), ensure_ascii=False),
-             config.get("backstory", ""), config.get("speaking_style", ""),
-             json.dumps(config.get("traits", []), ensure_ascii=False),
-             json.dumps(config.get("interests", []), ensure_ascii=False),
-             json.dumps(config.get("catchphrases", []), ensure_ascii=False),
-             config.get("humor_style", ""), config.get("emotional_pattern", "温和"),
-             json.dumps(config.get("relationships", {}), ensure_ascii=False),
-             json.dumps(config.get("voice_config", {}), ensure_ascii=False),
-             json.dumps(config.get("behavior", {}), ensure_ascii=False),
-             1, ts, ts)
-        )
-        await self.db.commit()
+        should_close = False
+        if _db:
+            db = _db
+        else:
+            db = await self._get_db()
+            should_close = True
+        try:
+            await db.execute(
+                """INSERT INTO agents (id, user_id, name, avatar, soul, identity, backstory, speaking_style,
+                   traits, interests, catchphrases, humor_style, emotional_pattern, relationships, 
+                   voice_config, behavior, enabled, created_at, updated_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (agent_id, config.get("user_id", ""), config["name"],
+                 config.get("avatar", "🤖"),
+                 json.dumps(soul.to_dict(), ensure_ascii=False),
+                 json.dumps(identity.to_dict(), ensure_ascii=False),
+                 config.get("backstory", ""), config.get("speaking_style", ""),
+                 json.dumps(config.get("traits", []), ensure_ascii=False),
+                 json.dumps(config.get("interests", []), ensure_ascii=False),
+                 json.dumps(config.get("catchphrases", []), ensure_ascii=False),
+                 config.get("humor_style", ""), config.get("emotional_pattern", "温和"),
+                 json.dumps(config.get("relationships", {}), ensure_ascii=False),
+                 json.dumps(config.get("voice_config", {}), ensure_ascii=False),
+                 json.dumps(config.get("behavior", {}), ensure_ascii=False),
+                 1, ts, ts)
+            )
+            await db.commit()
+        finally:
+            if should_close:
+                await db.close()
 
         # 加载到内存
         personality = Personality(
