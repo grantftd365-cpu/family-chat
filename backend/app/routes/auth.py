@@ -206,26 +206,37 @@ class WxLoginReq(BaseModel):
 @router.post("/wx-login")
 async def wx_login(req: WxLoginReq):
     """微信小程序登录: code -> openid -> JWT token"""
+    if not req.code or not req.code.strip():
+        raise HTTPException(400, "code 不能为空")
     if not WX_APPID or not WX_SECRET:
         raise HTTPException(500, "微信登录未配置（缺少 WX_APPID / WX_SECRET）")
 
     # 1. 用 code 换 openid
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.get(
-            "https://api.weixin.qq.com/sns/jscode2session",
-            params={
-                "appid": WX_APPID,
-                "secret": WX_SECRET,
-                "js_code": req.code,
-                "grant_type": "authorization_code",
-            },
-        )
-        data = resp.json()
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                "https://api.weixin.qq.com/sns/jscode2session",
+                params={
+                    "appid": WX_APPID,
+                    "secret": WX_SECRET,
+                    "js_code": req.code,
+                    "grant_type": "authorization_code",
+                },
+            )
+            data = resp.json()
+    except httpx.TimeoutException:
+        raise HTTPException(504, "微信服务器超时，请重试")
+    except httpx.RequestError as e:
+        logger.error(f"微信 API 请求失败: {e}")
+        raise HTTPException(502, "无法连接微信服务器")
 
     openid = data.get("openid")
     if not openid:
         logger.error(f"微信登录失败: {data}")
-        raise HTTPException(400, f"微信登录失败: {data.get('errmsg', '未知错误')}")
+        errcode = data.get("errcode", 0)
+        # 常见错误码: 40029=code无效, 40163=code已使用, 45011=频率限制
+        errmsg = data.get("errmsg", '未知错误')
+        raise HTTPException(400, f"微信登录失败({errcode}): {errmsg}")
 
     unionid = data.get("unionid", "")
 

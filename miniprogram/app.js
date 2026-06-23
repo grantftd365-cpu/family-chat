@@ -1,9 +1,15 @@
 /**
  * FamilyChat 小程序 - 入口
  */
+
+// 服务器地址配置（发布时改为正式地址）
+const BASE_URL = 'https://your-domain.com';  // TODO: 改为正式服务器地址
+// 本地开发时可临时改为:
+// const BASE_URL = 'http://localhost:8000';
+
 App({
   globalData: {
-    baseUrl: 'http://localhost:8000',  // TODO: 改为正式服务器地址
+    baseUrl: BASE_URL,
     token: '',
     user: null,
     wsConnected: false,
@@ -30,11 +36,13 @@ App({
             reject(new Error('wx.login 失败'));
             return;
           }
+          wx.showLoading({ title: '登录中...', mask: true });
           wx.request({
             url: `${this.globalData.baseUrl}/api/wx-login`,
             method: 'POST',
             data: { code: loginRes.code },
             success: (res) => {
+              wx.hideLoading();
               if (res.statusCode === 200) {
                 const { token, user } = res.data;
                 this.globalData.token = token;
@@ -43,13 +51,22 @@ App({
                 wx.setStorageSync('user', user);
                 resolve(user);
               } else {
-                reject(new Error(res.data.detail || '登录失败'));
+                const msg = res.data?.detail || '登录失败';
+                wx.showToast({ title: msg, icon: 'none' });
+                reject(new Error(msg));
               }
             },
-            fail: (err) => reject(err),
+            fail: (err) => {
+              wx.hideLoading();
+              wx.showToast({ title: '网络错误，请检查服务器地址', icon: 'none' });
+              reject(err);
+            },
           });
         },
-        fail: (err) => reject(err),
+        fail: (err) => {
+          wx.showToast({ title: '微信登录失败', icon: 'none' });
+          reject(err);
+        },
       });
     });
   },
