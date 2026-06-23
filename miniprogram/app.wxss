@@ -1,0 +1,146 @@
+/**
+ * FamilyChat 全局样式
+ */
+page {
+  --green: #07C160;
+  --green-dark: #06AD56;
+  --bg: #EDEDED;
+  --card: #FFFFFF;
+  --text: #111111;
+  --text-sub: #888888;
+  --text-light: #B2B2B2;
+  --border: #E6E6E6;
+  --danger: #FA5151;
+  --chat-right: #95EC69;
+  --chat-left: #FFFFFF;
+
+  font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-size: 28rpx;
+  color: var(--text);
+  background: var(--bg);
+  height: 100%;
+}
+
+/* 通用容器 */
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* 列表项 */
+.list-item {
+  display: flex;
+  align-items: center;
+  padding: 24rpx 32rpx;
+  background: var(--card);
+  border-bottom: 0.5rpx solid var(--border);
+}
+.list-item:active {
+  background: #F7F7F7;
+}
+.list-item .avatar {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 12rpx;
+  font-size: 56rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.list-item .avatar image {
+  width: 100%;
+  height: 100%;
+}
+.list-item .info {
+  flex: 1;
+  margin-left: 24rpx;
+  min-width: 0;
+}
+.list-item .name {
+  font-size: 32rpx;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.list-item .desc {
+  font-size: 26rpx;
+  color: var(--text-sub);
+  margin-top: 6rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.list-item .meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  margin-left: 16rpx;
+  flex-shrink: 0;
+}
+.list-item .time {
+  font-size: 24rpx;
+  color: var(--text-light);
+}
+.list-item .badge {
+  background: var(--danger);
+  color: #fff;
+  font-size: 20rpx;
+  min-width: 32rpx;
+  height: 32rpx;
+  border-radius: 16rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8rpx;
+  margin-top: 8rpx;
+}
+
+/* 搜索栏 */
+.search-bar {
+  padding: 16rpx 32rpx;
+  background: var(--bg);
+}
+.search-bar .search-input {
+  background: var(--card);
+  border-radius: 8rpx;
+  padding: 16rpx 24rpx;
+  font-size: 28rpx;
+  text-align: center;
+  color: var(--text-sub);
+}
+
+/* 按钮 */
+.btn-primary {
+  background: var(--green);
+  color: #fff;
+  border: none;
+  border-radius: 8rpx;
+  padding: 20rpx 48rpx;
+  font-size: 32rpx;
+  font-weight: 500;
+}
+.btn-primary:active {
+  background: var(--green-dark);
+}
+
+/* 空状态 */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 120rpx 0;
+  color: var(--text-sub);
+}
+.empty-state .icon {
+  font-size: 120rpx;
+  margin-bottom: 24rpx;
+}
+.empty-state .text {
+  font-size: 28rpx;
+}

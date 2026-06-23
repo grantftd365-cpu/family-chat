@@ -1,0 +1,63 @@
+<!--pages/contacts/contacts.wxml - 通讯录-->
+<view class="container">
+  <!-- 搜索栏 -->
+  <view class="search-bar">
+    <view class="search-input" bindtap="goSearch">🔍 搜索联系人</view>
+  </view>
+
+  <!-- 功能入口 -->
+  <view class="section">
+    <view class="list-item" bindtap="goFriendRequests">
+      <view class="avatar">👋</view>
+      <view class="info">
+        <view class="name">新的好友</view>
+      </view>
+      <view wx:if="{{pendingRequests > 0}}" class="badge">{{pendingRequests}}</view>
+    </view>
+  </view>
+
+  <!-- Agent 数字人 -->
+  <view class="section-title">数字人</view>
+  <view class="section">
+    <view
+      wx:for="{{agents}}"
+      wx:key="id"
+      class="list-item"
+      bindtap="goAgent"
+      data-id="{{item.id}}"
+    >
+      <view class="avatar">{{item.avatar || '🤖'}}</view>
+      <view class="info">
+        <view class="name">{{item.name}}</view>
+        <view class="desc">{{item.emotion || ''}}</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 好友列表 -->
+  <view class="section-title">好友 ({{friends.length}})</view>
+  <view class="section">
+    <view
+      wx:for="{{friends}}"
+      wx:key="id"
+      class="list-item"
+      bindtap="goFriend"
+      data-id="{{item.id}}"
+    >
+      <view class="avatar">{{item.avatar || '😀'}}</view>
+      <view class="info">
+        <view class="name">{{item.remark || item.nickname}}</view>
+        <view class="desc">{{item.signature || ''}}</view>
+      </view>
+      <view class="meta">
+        <view wx:if="{{item.online_status === 'online'}}" class="online-dot"></view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 空状态 -->
+  <view wx:if="{{friends.length === 0 && agents.length === 0}}" class="empty-state">
+    <view class="icon">👥</view>
+    <view class="text">暂无联系人</view>
+  </view>
+</view>

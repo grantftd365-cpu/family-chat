@@ -1,0 +1,32 @@
+/* pages/index/index.wxss */
+.chat-list {
+  flex: 1;
+  height: 0;
+}
+
+.login-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.login-box {
+  background: #fff;
+  border-radius: 24rpx;
+  padding: 60rpx 48rpx;
+  text-align: center;
+  width: 80%;
+}
+.login-title {
+  font-size: 48rpx;
+  font-weight: 700;
+  margin-bottom: 16rpx;
+}
+.login-desc {
+  font-size: 28rpx;
+  color: var(--text-sub);
+  margin-bottom: 48rpx;
+}

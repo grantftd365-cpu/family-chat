@@ -1,0 +1,44 @@
+<!--pages/index/index.wxml - 聊天列表-->
+<view class="container">
+  <!-- 搜索栏 -->
+  <view class="search-bar">
+    <view class="search-input" bindtap="goSearch">🔍 搜索</view>
+  </view>
+
+  <!-- 群聊列表 -->
+  <scroll-view scroll-y class="chat-list" enhanced show-scrollbar="{{false}}">
+    <view
+      wx:for="{{groups}}"
+      wx:key="id"
+      class="list-item"
+      bindtap="goChat"
+      data-id="{{item.id}}"
+      data-name="{{item.name}}"
+    >
+      <view class="avatar">{{item.avatar || '👥'}}</view>
+      <view class="info">
+        <view class="name">{{item.name}}</view>
+        <view class="desc">{{item.last_message || '暂无消息'}}</view>
+      </view>
+      <view class="meta">
+        <view class="time">{{item.timeStr}}</view>
+        <view wx:if="{{item.unread}}" class="badge">{{item.unread > 99 ? '99+' : item.unread}}</view>
+      </view>
+    </view>
+
+    <!-- 空状态 -->
+    <view wx:if="{{!loading && groups.length === 0}}" class="empty-state">
+      <view class="icon">💬</view>
+      <view class="text">还没有聊天，快去发消息吧</view>
+    </view>
+  </scroll-view>
+
+  <!-- 未登录提示 -->
+  <view wx:if="{{!isLoggedIn}}" class="login-mask">
+    <view class="login-box">
+      <view class="login-title">🏠 FamilyChat</view>
+      <view class="login-desc">家庭数字人聊天</view>
+      <button class="btn-primary" bindtap="doLogin">微信一键登录</button>
+    </view>
+  </view>
+</view>

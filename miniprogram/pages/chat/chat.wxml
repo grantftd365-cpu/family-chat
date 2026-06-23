@@ -1,0 +1,84 @@
+<!--pages/chat/chat.wxml - 聊天室-->
+<view class="container">
+  <!-- 消息列表 -->
+  <scroll-view
+    scroll-y
+    class="msg-list"
+    scroll-into-view="{{scrollToId}}"
+    scroll-with-animation
+    enhanced
+    show-scrollbar="{{false}}"
+  >
+    <view wx:for="{{messages}}" wx:key="id" id="msg-{{item.id}}">
+      <!-- 系统消息 -->
+      <view wx:if="{{item.msg_type === 'system'}}" class="sys-msg">
+        <text>{{item.content}}</text>
+      </view>
+
+      <!-- 普通消息 -->
+      <view wx:else class="msg-row {{item.isMine ? 'right' : 'left'}}">
+        <view class="msg-avatar">{{item.sender_avatar || '😀'}}</view>
+        <view class="msg-body">
+          <view wx:if="{{!item.isMine}}" class="msg-name">{{item.sender_name}}</view>
+          <!-- 回复引用 -->
+          <view wx:if="{{item.reply_content}}" class="msg-reply">
+            <text>{{item.reply_content}}</text>
+          </view>
+          <!-- 消息气泡 -->
+          <view class="msg-bubble" bindlongpress="onLongPress" data-id="{{item.id}}" data-sender="{{item.sender_id}}">
+            <!-- 文本 -->
+            <text wx:if="{{item.msg_type === 'text'}}" class="msg-text">{{item.content}}</text>
+            <!-- 图片 -->
+            <image wx:elif="{{item.msg_type === 'image'}}" src="{{item.media_url || item.content}}" mode="widthFix" class="msg-image" bindtap="previewImage" data-url="{{item.media_url || item.content}}" />
+            <!-- 语音 -->
+            <view wx:elif="{{item.msg_type === 'voice'}}" class="msg-voice" bindtap="playVoice" data-url="{{item.voice_url || item.content}}">
+              <text>🎤 语音消息</text>
+            </view>
+            <!-- 红包 -->
+            <view wx:elif="{{item.msg_type === 'red_envelope'}}" class="msg-red" bindtap="openRedEnvelope" data-id="{{item.red_id}}">
+              <view class="red-icon">🧧</view>
+              <view class="red-text">{{item.content}}</view>
+            </view>
+            <!-- 文件 -->
+            <view wx:elif="{{item.msg_type === 'file'}}" class="msg-file">
+              <text>📎 {{item.file_name || '文件'}}</text>
+            </view>
+            <!-- 默认 -->
+            <text wx:else class="msg-text">{{item.content}}</text>
+          </view>
+          <!-- Reactions -->
+          <view wx:if="{{item.reactions.length > 0}}" class="msg-reactions">
+            <text wx:for="{{item.reactions}}" wx:key="emoji" wx:for-item="r" class="reaction">{{r.emoji}}</text>
+          </view>
+          <view class="msg-time">{{item.timeStr}}</view>
+        </view>
+      </view>
+    </view>
+
+    <!-- Agent 正在输入 -->
+    <view wx:if="{{typingAgent}}" class="typing-indicator">
+      <text>{{typingAgent}} 正在输入...</text>
+    </view>
+  </scroll-view>
+
+  <!-- 输入栏 -->
+  <view class="input-bar">
+    <view class="input-tools">
+      <text class="tool-btn" bindtap="toggleEmoji">😊</text>
+      <text class="tool-btn" bindtap="chooseImage">📷</text>
+    </view>
+    <textarea
+      class="msg-input"
+      value="{{inputText}}"
+      bindinput="onInput"
+      bindconfirm="sendMessage"
+      confirm-type="send"
+      placeholder="输入消息..."
+      auto-height
+      maxlength="500"
+    />
+    <button class="send-btn {{inputText ? 'active' : ''}}" bindtap="sendMessage" disabled="{{!inputText}}">
+      发送
+    </button>
+  </view>
+</view>

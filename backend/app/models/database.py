@@ -27,6 +27,8 @@ async def init_db():
             avatar TEXT DEFAULT '😀',
             avatar_url TEXT DEFAULT '',
             phone TEXT DEFAULT '',
+            wx_openid TEXT DEFAULT '',
+            wx_unionid TEXT DEFAULT '',
             signature TEXT DEFAULT '',
             gender TEXT DEFAULT '',
             region TEXT DEFAULT '',
@@ -41,6 +43,7 @@ async def init_db():
         );
         CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
         CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+        CREATE INDEX IF NOT EXISTS idx_users_wx_openid ON users(wx_openid);
 
         -- ==================== 群组表 ====================
         CREATE TABLE IF NOT EXISTS groups (

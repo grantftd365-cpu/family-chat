@@ -1,0 +1,46 @@
+/* pages/profile/profile.wxss */
+.user-card {
+  display: flex;
+  align-items: center;
+  padding: 40rpx 32rpx;
+  background: #fff;
+  margin-bottom: 16rpx;
+}
+.user-avatar {
+  width: 120rpx;
+  height: 120rpx;
+  border-radius: 16rpx;
+  font-size: 72rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  flex-shrink: 0;
+}
+.user-info {
+  flex: 1;
+  margin-left: 28rpx;
+}
+.user-name {
+  font-size: 36rpx;
+  font-weight: 600;
+}
+.user-id {
+  font-size: 24rpx;
+  color: var(--text-sub);
+  margin-top: 8rpx;
+}
+.section {
+  margin-bottom: 16rpx;
+}
+.arrow {
+  font-size: 36rpx;
+  color: var(--text-light);
+  flex-shrink: 0;
+}
+.version {
+  text-align: center;
+  font-size: 24rpx;
+  color: var(--text-light);
+  padding: 48rpx 0;
+}

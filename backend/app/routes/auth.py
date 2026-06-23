@@ -186,3 +186,119 @@ async def get_avatar(filename: str):
     if not Path(filepath).exists():
         raise HTTPException(404)
     return FileResponse(filepath)
+
+
+# ==================== 微信小程序登录 ====================
+
+import os
+import httpx
+
+WX_APPID = os.getenv("WX_APPID", "")
+WX_SECRET = os.getenv("WX_SECRET", "")
+
+
+class WxLoginReq(BaseModel):
+    code: str
+    nickname: str = ""
+    avatar: str = ""
+
+
+@router.post("/wx-login")
+async def wx_login(req: WxLoginReq):
+    """微信小程序登录: code -> openid -> JWT token"""
+    if not WX_APPID or not WX_SECRET:
+        raise HTTPException(500, "微信登录未配置（缺少 WX_APPID / WX_SECRET）")
+
+    # 1. 用 code 换 openid
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.get(
+            "https://api.weixin.qq.com/sns/jscode2session",
+            params={
+                "appid": WX_APPID,
+                "secret": WX_SECRET,
+                "js_code": req.code,
+                "grant_type": "authorization_code",
+            },
+        )
+        data = resp.json()
+
+    openid = data.get("openid")
+    if not openid:
+        logger.error(f"微信登录失败: {data}")
+        raise HTTPException(400, f"微信登录失败: {data.get('errmsg', '未知错误')}")
+
+    unionid = data.get("unionid", "")
+
+    # 2. 查找或创建用户
+    db = await get_db()
+    try:
+        async with db.execute(
+            "SELECT id, username, nickname, avatar, agent_id FROM users WHERE wx_openid=?",
+            (openid,)
+        ) as c:
+            row = await c.fetchone()
+
+        if row:
+            # 已有用户，直接登录
+            user_id = row[0]
+            await db.execute(
+                "UPDATE users SET online_status='online', last_seen=? WHERE id=?",
+                (now(), user_id)
+            )
+            await db.commit()
+            token = create_token(user_id, row[1])
+            return {
+                "token": token,
+                "user": {
+                    "id": user_id, "username": row[1], "nickname": row[2],
+                    "avatar": row[3] or "😀", "agent_id": row[4] or "",
+                    "is_new": False,
+                },
+            }
+
+        # 新用户，自动注册
+        user_id = gen_id()
+        ts = now()
+        nickname = req.nickname or f"微信用户{user_id[:6]}"
+        avatar = req.avatar or "😀"
+        username = f"wx_{openid[:8]}"
+
+        await db.execute(
+            """INSERT INTO users (id,email,username,nickname,password_hash,avatar,wx_openid,wx_unionid,role,agent_id,created_at,updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (user_id, f"{openid}@wx.local", username, nickname,
+             "", avatar, openid, unionid, "member", "", ts, ts)
+        )
+
+        # 创建数字人分身
+        from ..main import agent_manager
+        agent_id = f"agent_{user_id}"
+        agent_config = {
+            "id": agent_id, "user_id": user_id, "name": nickname,
+            "avatar": avatar, "backstory": f"{nickname}的数字分身",
+            "speaking_style": "待炼化",
+        }
+        await agent_manager.create_agent(agent_config, _db=db)
+        await db.execute("UPDATE users SET agent_id=? WHERE id=?", (agent_id, user_id))
+
+        # 加入默认群
+        await db.execute(
+            "INSERT OR IGNORE INTO group_members (group_id,user_id,role,joined_at) VALUES (?,?,?,?)",
+            ("family_default", user_id, "member", ts)
+        )
+        await db.execute(
+            "INSERT OR IGNORE INTO group_members (group_id,user_id,role,joined_at) VALUES (?,?,?,?)",
+            ("family_default", agent_id, "agent", ts)
+        )
+        await db.commit()
+
+        token = create_token(user_id, username)
+        return {
+            "token": token,
+            "user": {
+                "id": user_id, "username": username, "nickname": nickname,
+                "avatar": avatar, "agent_id": agent_id, "is_new": True,
+            },
+        }
+    finally:
+        await db.close()
