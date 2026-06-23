@@ -1,5 +1,5 @@
 /**
- * 通讯录页
+ * 通讯录页 v2.0
  */
 const app = getApp();
 
@@ -15,17 +15,14 @@ Page({
   },
 
   loadData() {
-    // 加载 Agent
     app.request({ url: '/api/agents' }).then(agents => {
       this.setData({ agents });
     }).catch(() => {});
 
-    // 加载好友
     app.request({ url: '/api/friends' }).then(friends => {
       this.setData({ friends });
     }).catch(() => {});
 
-    // 好友请求数
     app.request({ url: '/api/friends/requests' }).then(reqs => {
       this.setData({ pendingRequests: reqs.length });
     }).catch(() => {});
@@ -35,17 +32,22 @@ Page({
     wx.showToast({ title: '搜索功能开发中', icon: 'none' });
   },
 
+  goJoin() {
+    wx.navigateTo({ url: '/pages/join/join' });
+  },
+
   goFriendRequests() {
     wx.showToast({ title: '好友请求页面开发中', icon: 'none' });
   },
 
-  goAgent(e) {
-    const id = e.currentTarget.dataset.id;
-    wx.navigateTo({ url: `/pages/chat/chat?id=family_default&name=${encodeURIComponent('家庭群')}` });
+  goAgentChat(e) {
+    const { id, name } = e.currentTarget.dataset;
+    wx.navigateTo({
+      url: `/pages/chat/chat?id=family_default&name=${encodeURIComponent('家庭群')}`,
+    });
   },
 
-  goFriend(e) {
-    const id = e.currentTarget.dataset.id;
+  goFriendChat(e) {
     wx.showToast({ title: '私聊功能开发中', icon: 'none' });
   },
 });

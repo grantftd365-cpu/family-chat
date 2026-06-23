@@ -1,4 +1,6 @@
 {
-  "navigationBarTitleText": "聊天",
-  "enablePullDownRefresh": true
+  "navigationBarTitleText": "消息",
+  "navigationBarBackgroundColor": "#07C160",
+  "navigationBarTextStyle": "white",
+  "enablePullDownRefresh": false
 }

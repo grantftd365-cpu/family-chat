@@ -54,6 +54,7 @@ async def init_db():
             description TEXT DEFAULT '',
             group_type TEXT DEFAULT 'family',
             announcement TEXT DEFAULT '',
+            family_code TEXT DEFAULT '',
             mute_all INTEGER DEFAULT 0,
             max_members INTEGER DEFAULT 500,
             created_at REAL NOT NULL,

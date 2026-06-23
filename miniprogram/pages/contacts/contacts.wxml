@@ -1,63 +1,84 @@
 <!--pages/contacts/contacts.wxml - 通讯录-->
 <view class="container">
-  <!-- 搜索栏 -->
   <view class="search-bar">
-    <view class="search-input" bindtap="goSearch">🔍 搜索联系人</view>
-  </view>
-
-  <!-- 功能入口 -->
-  <view class="section">
-    <view class="list-item" bindtap="goFriendRequests">
-      <view class="avatar">👋</view>
-      <view class="info">
-        <view class="name">新的好友</view>
-      </view>
-      <view wx:if="{{pendingRequests > 0}}" class="badge">{{pendingRequests}}</view>
+    <view class="search-box" bindtap="goSearch">
+      <text class="icon">🔍</text>
+      <text>搜索联系人</text>
     </view>
   </view>
 
-  <!-- Agent 数字人 -->
-  <view class="section-title">数字人</view>
-  <view class="section">
-    <view
-      wx:for="{{agents}}"
-      wx:key="id"
-      class="list-item"
-      bindtap="goAgent"
-      data-id="{{item.id}}"
-    >
-      <view class="avatar">{{item.avatar || '🤖'}}</view>
-      <view class="info">
-        <view class="name">{{item.name}}</view>
-        <view class="desc">{{item.emotion || ''}}</view>
+  <scroll-view scroll-y class="contact-list" enhanced show-scrollbar="{{false}}">
+    <!-- 快捷入口 -->
+    <view class="section">
+      <view class="cell" bindtap="goJoin">
+        <view class="icon" style="background: #FFF3E0;">👨‍👩‍👧‍👦</view>
+        <view class="content">
+          <view class="label">加入家庭</view>
+          <view class="desc">输入邀请码加入新家庭</view>
+        </view>
+        <text class="arrow">›</text>
+      </view>
+      <view class="cell" bindtap="goFriendRequests">
+        <view class="icon" style="background: #E8F5E9;">👋</view>
+        <view class="content">
+          <view class="label">新的好友</view>
+        </view>
+        <view class="extra" wx:if="{{pendingRequests > 0}}">
+          <view class="badge">{{pendingRequests}}</view>
+        </view>
+        <text class="arrow">›</text>
       </view>
     </view>
-  </view>
 
-  <!-- 好友列表 -->
-  <view class="section-title">好友 ({{friends.length}})</view>
-  <view class="section">
-    <view
-      wx:for="{{friends}}"
-      wx:key="id"
-      class="list-item"
-      bindtap="goFriend"
-      data-id="{{item.id}}"
-    >
-      <view class="avatar">{{item.avatar || '😀'}}</view>
-      <view class="info">
-        <view class="name">{{item.remark || item.nickname}}</view>
-        <view class="desc">{{item.signature || ''}}</view>
-      </view>
-      <view class="meta">
-        <view wx:if="{{item.online_status === 'online'}}" class="online-dot"></view>
+    <!-- 数字人 -->
+    <view class="section-title">🤖 数字人</view>
+    <view class="section">
+      <view
+        wx:for="{{agents}}"
+        wx:key="id"
+        class="cell"
+        bindtap="goAgentChat"
+        data-id="{{item.id}}"
+        data-name="{{item.name}}"
+      >
+        <view class="icon">
+          <text>{{item.avatar || '🤖'}}</text>
+        </view>
+        <view class="content">
+          <view class="label">{{item.name}}</view>
+          <view class="desc">{{item.soul_values[0] || '数字分身'}}</view>
+        </view>
       </view>
     </view>
-  </view>
 
-  <!-- 空状态 -->
-  <view wx:if="{{friends.length === 0 && agents.length === 0}}" class="empty-state">
-    <view class="icon">👥</view>
-    <view class="text">暂无联系人</view>
-  </view>
+    <!-- 好友 -->
+    <view class="section-title">👥 好友 ({{friends.length}})</view>
+    <view class="section">
+      <view
+        wx:for="{{friends}}"
+        wx:key="id"
+        class="cell"
+        bindtap="goFriendChat"
+        data-id="{{item.id}}"
+        data-name="{{item.remark || item.nickname}}"
+      >
+        <view class="icon">
+          <text>{{item.avatar || '😀'}}</text>
+        </view>
+        <view class="content">
+          <view class="label">{{item.remark || item.nickname}}</view>
+          <view class="desc" wx:if="{{item.signature}}">{{item.signature}}</view>
+        </view>
+        <view class="extra" wx:if="{{item.online_status === 'online'}}">
+          <view class="dot-online"></view>
+        </view>
+      </view>
+    </view>
+
+    <view wx:if="{{friends.length === 0 && agents.length === 0}}" class="empty">
+      <view class="emoji">👥</view>
+      <view class="title">暂无联系人</view>
+      <view class="subtitle">邀请家人加入吧</view>
+    </view>
+  </scroll-view>
 </view>

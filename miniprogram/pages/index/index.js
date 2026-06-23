@@ -1,5 +1,5 @@
 /**
- * 聊天列表页
+ * 消息列表页
  */
 const app = getApp();
 const { formatTime, formatLastMessage } = require('../../utils/util');
@@ -9,6 +9,7 @@ Page({
   data: {
     isLoggedIn: false,
     loading: true,
+    refreshing: false,
     groups: [],
   },
 
@@ -19,59 +20,44 @@ Page({
   onShow() {
     if (this.data.isLoggedIn) {
       this.loadGroups();
-      this.connectWs();
     }
-  },
-
-  onPullDownRefresh() {
-    this.loadGroups().then(() => wx.stopPullDownRefresh());
   },
 
   checkLogin() {
-    const token = app.globalData.token;
-    if (token) {
+    if (app.globalData.token) {
       this.setData({ isLoggedIn: true, loading: false });
       this.loadGroups();
+      this.connectWs();
     } else {
-      // 尝试自动登录
-      app.wxLogin().then(() => {
-        this.setData({ isLoggedIn: true, loading: false });
-        this.loadGroups();
-      }).catch(() => {
-        this.setData({ isLoggedIn: false, loading: false });
-      });
+      this.setData({ isLoggedIn: false, loading: false });
     }
   },
 
-  doLogin() {
-    app.wxLogin().then(() => {
-      this.setData({ isLoggedIn: true });
-      this.loadGroups();
-      this.connectWs();
-    }).catch((err) => {
-      wx.showToast({ title: err.message || '登录失败', icon: 'none' });
-    });
+  goLogin() {
+    wx.navigateTo({ url: '/pages/login/login' });
   },
 
   loadGroups() {
-    return app.request({ url: '/api/groups' }).then(groups => {
+    app.request({ url: '/api/groups' }).then(groups => {
       const list = groups.map(g => ({
         ...g,
         timeStr: formatTime(g.last_time),
-        last_message: formatLastMessage(g.last_message, g.last_type),
+        last_message: formatLastMessage(g.last_message),
       }));
-      this.setData({ groups: list });
-    }).catch(err => {
-      console.error('加载群组失败:', err);
+      this.setData({ groups: list, loading: false, refreshing: false });
+    }).catch(() => {
+      this.setData({ loading: false, refreshing: false });
     });
+  },
+
+  onRefresh() {
+    this.setData({ refreshing: true });
+    this.loadGroups();
   },
 
   connectWs() {
     ws.connect(app.globalData.token);
-    ws.on('message', (data) => {
-      // 收到新消息，刷新列表
-      this.loadGroups();
-    });
+    ws.on('message', () => this.loadGroups());
   },
 
   goChat(e) {

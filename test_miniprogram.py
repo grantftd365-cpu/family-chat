@@ -296,6 +296,33 @@ def test_api_notifications():
     return True
 
 
+def test_family_invite_code():
+    """测试家庭邀请码 API"""
+    print("\n👨‍👩‍👧‍👦 模块5k: 家庭邀请码")
+    # 生成邀请码
+    r = api("POST", "/api/groups/family_default/invite-code")
+    check("生成邀请码", r.status_code == 200)
+    code = ""
+    if r.status_code == 200:
+        code = r.json().get("code", "")
+        check("邀请码 6 位", len(code) == 6, f"code={code}")
+
+    # 检查邀请码
+    if code:
+        r2 = api("GET", "/api/family/check-code", data={"code": code})
+        check("检查邀请码", r2.status_code == 200)
+        if r2.status_code == 200:
+            d = r2.json()
+            check("返回群名", bool(d.get("name")))
+            check("返回成员数", "member_count" in d)
+
+    # 无效邀请码
+    r3 = api("GET", "/api/family/check-code", data={"code": "XXXXXX"})
+    check("无效码返回 404", r3.status_code == 404)
+
+    return True
+
+
 # ==================== 模块6: WebSocket 测试 ====================
 
 def test_websocket():
@@ -366,7 +393,7 @@ def test_miniprogram_files():
         "miniprogram/project.config.json", "miniprogram/sitemap.json",
         "miniprogram/utils/util.js", "miniprogram/utils/ws.js",
     ]
-    pages = ["index", "chat", "contacts", "profile"]
+    pages = ["index", "chat", "contacts", "profile", "login", "join"]
     for p in pages:
         for ext in [".js", ".wxml", ".wxss", ".json"]:
             required.append(f"miniprogram/pages/{p}/{p}{ext}")
@@ -376,7 +403,7 @@ def test_miniprogram_files():
 
     with open("miniprogram/app.json") as f:
         config = json.load(f)
-    check("app.json pages >= 4", len(config.get("pages", [])) >= 4)
+    check("app.json pages >= 6", len(config.get("pages", [])) >= 6)
     check("app.json 有 tabBar", "tabBar" in config)
     check("tabBar 3 个项", len(config.get("tabBar", {}).get("list", [])) == 3)
 
@@ -423,8 +450,22 @@ def test_code_quality():
     with open("miniprogram/pages/index/index.js") as f:
         idx = f.read()
     check("index.js: 群组列表", "groups" in idx)
-    check("index.js: 下拉刷新", "onPullDownRefresh" in idx)
-    check("index.js: 登录检查", "isLoggedIn" in idx or "wxLogin" in idx)
+    check("index.js: 下拉刷新", "onRefresh" in idx or "onPullDownRefresh" in idx)
+    check("index.js: 登录检查", "isLoggedIn" in idx or "goLogin" in idx)
+
+    with open("miniprogram/pages/login/login.js") as f:
+        login = f.read()
+    check("login.js: wx.login", "wxLogin" in login or "wx.login" in login)
+    check("login.js: 头像选择", "chooseAvatar" in login or "avatar" in login.lower())
+    check("login.js: 昵称输入", "nickname" in login)
+    check("login.js: 邀请码", "code" in login)
+    check("login.js: 建群", "createFamily" in login or "CreateFamily" in login)
+
+    with open("miniprogram/pages/join/join.js") as f:
+        join = f.read()
+    check("join.js: 邀请码输入", "code" in join)
+    check("join.js: 加入家庭", "join" in join.lower())
+    check("join.js: 检查邀请码", "checkCode" in join or "check-code" in join)
 
     return True
 
@@ -465,6 +506,7 @@ def main():
     run("收藏 API", test_api_favorites)
     run("朋友圈 API", test_api_moments)
     run("通知 API", test_api_notifications)
+    run("家庭邀请码", test_family_invite_code)
     run("WebSocket", test_websocket)
     run("文件完整性", test_miniprogram_files)
     run("代码质量", test_code_quality)

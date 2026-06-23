@@ -1,46 +1,40 @@
 /* pages/profile/profile.wxss */
-.user-card {
-  display: flex;
-  align-items: center;
+.profile-card {
+  background: var(--bg-white);
+  margin: 24rpx 32rpx;
   padding: 40rpx 32rpx;
-  background: #fff;
-  margin-bottom: 16rpx;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
 }
-.user-avatar {
-  width: 120rpx;
-  height: 120rpx;
-  border-radius: 16rpx;
-  font-size: 72rpx;
+.profile-header {
   display: flex;
   align-items: center;
-  justify-content: center;
-  background: var(--bg);
-  flex-shrink: 0;
+  gap: 28rpx;
 }
-.user-info {
+.profile-info {
   flex: 1;
-  margin-left: 28rpx;
 }
-.user-name {
-  font-size: 36rpx;
-  font-weight: 600;
+.profile-name {
+  font-size: 40rpx;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 8rpx;
 }
-.user-id {
+.profile-id {
   font-size: 24rpx;
-  color: var(--text-sub);
-  margin-top: 8rpx;
+  color: var(--text-tertiary);
 }
-.section {
-  margin-bottom: 16rpx;
+.profile-signature {
+  margin-top: 20rpx;
+  font-size: 26rpx;
+  color: var(--text-secondary);
+  padding-top: 20rpx;
+  border-top: 0.5rpx solid var(--border-light);
 }
-.arrow {
-  font-size: 36rpx;
-  color: var(--text-light);
-  flex-shrink: 0;
-}
-.version {
+
+.version-text {
   text-align: center;
   font-size: 24rpx;
-  color: var(--text-light);
+  color: var(--text-placeholder);
   padding: 48rpx 0;
 }

@@ -1,0 +1,237 @@
+/* pages/login/login.wxss */
+.login-page {
+  min-height: 100vh;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 顶部英雄区 */
+.hero {
+  position: relative;
+  height: 520rpx;
+  overflow: hidden;
+}
+.hero-bg {
+  position: absolute;
+  inset: 0;
+  background: var(--primary-gradient);
+  border-radius: 0 0 80rpx 80rpx;
+}
+.hero-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding-top: 80rpx;
+}
+.logo {
+  width: 160rpx;
+  height: 160rpx;
+  font-size: 88rpx;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 40rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(10px);
+  margin-bottom: 24rpx;
+}
+.app-name {
+  font-size: 48rpx;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 4rpx;
+}
+.slogan {
+  font-size: 28rpx;
+  color: rgba(255, 255, 255, 0.8);
+  margin-top: 12rpx;
+}
+
+/* 步骤内容 */
+.step {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.step-body {
+  flex: 1;
+  padding: 48rpx 48rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.welcome-title {
+  font-size: 40rpx;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 16rpx;
+}
+.welcome-desc {
+  font-size: 28rpx;
+  color: var(--text-secondary);
+  margin-bottom: 64rpx;
+}
+
+.wx-login-btn {
+  margin-top: 32rpx;
+}
+.wx-icon {
+  margin-right: 12rpx;
+  font-size: 36rpx;
+}
+
+.agreement {
+  margin-top: 32rpx;
+  font-size: 24rpx;
+  color: var(--text-tertiary);
+  text-align: center;
+}
+.agreement .link {
+  color: var(--primary);
+}
+
+/* 步骤标题 */
+.step-title {
+  font-size: 40rpx;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 12rpx;
+  text-align: center;
+}
+.step-desc {
+  font-size: 28rpx;
+  color: var(--text-secondary);
+  margin-bottom: 48rpx;
+  text-align: center;
+}
+
+/* 头像选择 */
+.avatar-picker {
+  margin-bottom: 48rpx;
+}
+.avatar-btn {
+  width: 176rpx;
+  height: 176rpx;
+  border-radius: 50%;
+  overflow: hidden;
+  padding: 0;
+  margin: 0;
+  background: var(--bg);
+  border: 4rpx dashed var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.avatar-btn::after {
+  border: none;
+}
+.avatar-img {
+  width: 100%;
+  height: 100%;
+}
+.avatar-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8rpx;
+}
+.camera-icon {
+  font-size: 48rpx;
+}
+.avatar-hint {
+  font-size: 22rpx;
+  color: var(--text-tertiary);
+}
+
+/* 输入组 */
+.input-group {
+  width: 100%;
+  margin-bottom: 48rpx;
+}
+.input-label {
+  font-size: 26rpx;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 12rpx;
+}
+.nickname-input {
+  width: 100%;
+  height: 96rpx;
+  background: var(--bg);
+  border-radius: var(--radius-lg);
+  padding: 0 32rpx;
+  font-size: 32rpx;
+  color: var(--text-primary);
+  text-align: center;
+}
+
+/* 邀请码输入 */
+.code-input-wrap {
+  width: 100%;
+  margin-bottom: 48rpx;
+}
+.code-label {
+  font-size: 26rpx;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 24rpx;
+  text-align: center;
+}
+.code-inputs {
+  display: flex;
+  justify-content: center;
+  gap: 16rpx;
+}
+.code-cell {
+  width: 80rpx;
+  height: 96rpx;
+  background: var(--bg);
+  border-radius: var(--radius-md);
+  text-align: center;
+  font-size: 40rpx;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  transition: all 0.2s;
+}
+.code-cell.filled {
+  background: var(--primary-light);
+  border: 2rpx solid var(--primary);
+}
+.code-hint {
+  font-size: 24rpx;
+  color: var(--text-tertiary);
+  text-align: center;
+  margin-top: 16rpx;
+}
+
+/* 分割文字 */
+.divider-text {
+  font-size: 26rpx;
+  color: var(--text-tertiary);
+  margin: 32rpx 0;
+  position: relative;
+  text-align: center;
+  width: 100%;
+}
+.divider-text::before,
+.divider-text::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 30%;
+  height: 0.5rpx;
+  background: var(--border);
+}
+.divider-text::before {
+  left: 0;
+}
+.divider-text::after {
+  right: 0;
+}

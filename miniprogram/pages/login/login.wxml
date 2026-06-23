@@ -1,0 +1,113 @@
+<!--pages/login/login.wxml - 登录/注册-->
+<view class="login-page">
+  <!-- 顶部装饰 -->
+  <view class="hero">
+    <view class="hero-bg"></view>
+    <view class="hero-content">
+      <view class="logo">🏠</view>
+      <view class="app-name">FamilyChat</view>
+      <view class="slogan">让家人更亲近</view>
+    </view>
+  </view>
+
+  <!-- 步骤1: 微信登录 -->
+  <view class="step" wx:if="{{step === 1}}">
+    <view class="step-body">
+      <view class="welcome-title">欢迎加入 FamilyChat</view>
+      <view class="welcome-desc">连接你的家庭，分享每一天</view>
+
+      <button class="btn btn-primary btn-block wx-login-btn" bindtap="onWxLogin">
+        <text class="wx-icon">💬</text>
+        微信一键登录
+      </button>
+
+      <view class="agreement">
+        <text>登录即表示同意</text>
+        <text class="link">《用户协议》</text>
+        <text>和</text>
+        <text class="link">《隐私政策》</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 步骤2: 设置头像和昵称 -->
+  <view class="step" wx:if="{{step === 2}}">
+    <view class="step-body">
+      <view class="step-title">设置你的形象</view>
+      <view class="step-desc">让家人更容易认出你</view>
+
+      <!-- 头像选择 -->
+      <view class="avatar-picker">
+        <button class="avatar-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
+          <image wx:if="{{avatarUrl}}" src="{{avatarUrl}}" class="avatar-img" mode="aspectFill" />
+          <view wx:else class="avatar-placeholder">
+            <text class="camera-icon">📷</text>
+            <text class="avatar-hint">选择头像</text>
+          </view>
+        </button>
+      </view>
+
+      <!-- 昵称输入 -->
+      <view class="input-group">
+        <view class="input-label">昵称</view>
+        <input
+          type="nickname"
+          class="nickname-input"
+          placeholder="输入你的昵称"
+          value="{{nickname}}"
+          bindinput="onNicknameInput"
+          maxlength="16"
+        />
+      </view>
+
+      <button
+        class="btn btn-primary btn-block"
+        bindtap="onConfirmProfile"
+        disabled="{{!nickname}}"
+      >
+        下一步
+      </button>
+    </view>
+  </view>
+
+  <!-- 步骤3: 加入/创建家庭 -->
+  <view class="step" wx:if="{{step === 3}}">
+    <view class="step-body">
+      <view class="step-title">加入家庭</view>
+      <view class="step-desc">输入家人的邀请码，或创建新家庭</view>
+
+      <!-- 邀请码输入 -->
+      <view class="code-input-wrap">
+        <view class="code-label">邀请码</view>
+        <view class="code-inputs">
+          <input
+            wx:for="{{6}}"
+            wx:key="*this"
+            class="code-cell {{codeChars[item] ? 'filled' : ''}}"
+            value="{{codeChars[item]}}"
+            maxlength="1"
+            bindinput="onCodeInput"
+            data-index="{{item}}"
+            focus="{{item === codeFocus}}"
+          />
+        </view>
+        <view class="code-hint">输入家人分享的 6 位邀请码</view>
+      </view>
+
+      <button
+        class="btn btn-primary btn-block"
+        bindtap="onJoinFamily"
+        disabled="{{codeStr.length !== 6}}"
+        loading="{{joining}}"
+      >
+        加入家庭
+      </button>
+
+      <view class="divider-text">或者</view>
+
+      <button class="btn btn-secondary btn-block" bindtap="onCreateFamily">
+        创建新家庭
+      </button>
+    </view>
+  </view>
+</view>

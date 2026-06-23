@@ -1,0 +1,50 @@
+<!--pages/join/join.wxml - 通过邀请码加入家庭-->
+<view class="container">
+  <view class="join-header">
+    <view class="join-icon">👨‍👩‍👧‍👦</view>
+    <view class="join-title">加入家庭群</view>
+    <view class="join-desc" wx:if="{{groupInfo}}">
+      {{groupInfo.name}} · {{groupInfo.member_count}} 位家人
+    </view>
+    <view class="join-desc" wx:else>
+      输入家人分享的邀请码
+    </view>
+  </view>
+
+  <!-- 邀请码输入 -->
+  <view class="code-section">
+    <view class="code-inputs">
+      <input
+        wx:for="{{6}}"
+        wx:key="*this"
+        class="code-cell {{codeChars[item] ? 'filled' : ''}}"
+        value="{{codeChars[item]}}"
+        maxlength="1"
+        bindinput="onCodeInput"
+        data-index="{{item}}"
+        focus="{{item === codeFocus}}"
+        type="text"
+      />
+    </view>
+  </view>
+
+  <!-- 群信息预览 -->
+  <view class="preview-card" wx:if="{{groupInfo}}">
+    <view class="preview-avatar">{{groupInfo.avatar || '👥'}}</view>
+    <view class="preview-info">
+      <view class="preview-name">{{groupInfo.name}}</view>
+      <view class="preview-count">{{groupInfo.member_count}} 位家人在等你</view>
+    </view>
+  </view>
+
+  <view class="join-actions">
+    <button
+      class="btn btn-primary btn-block"
+      bindtap="onJoin"
+      disabled="{{codeStr.length !== 6}}"
+      loading="{{loading}}"
+    >
+      加入家庭
+    </button>
+  </view>
+</view>

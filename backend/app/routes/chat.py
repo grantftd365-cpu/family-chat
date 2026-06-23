@@ -752,3 +752,139 @@ async def get_red_envelope(eid: str, user=Depends(get_current_user)):
         }
     finally:
         await db.close()
+
+
+# ==================== 家庭邀请码 ====================
+
+import random
+import string
+
+
+def _gen_family_code() -> str:
+    """生成6位家庭邀请码"""
+    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+
+
+@router.post("/groups/{group_id}/invite-code")
+async def generate_invite_code(group_id: str, user=Depends(get_current_user)):
+    """生成或刷新家庭邀请码"""
+    db = await get_db()
+    try:
+        # 检查是否是群主或管理员
+        async with db.execute(
+            "SELECT role FROM group_members WHERE group_id=? AND user_id=?",
+            (group_id, user["user_id"])
+        ) as c:
+            row = await c.fetchone()
+            if not row:
+                raise HTTPException(403, "你不是群成员")
+
+        # 检查是否已有有效邀请码
+        async with db.execute(
+            "SELECT family_code FROM groups WHERE id=?",
+            (group_id,)
+        ) as c:
+            row = await c.fetchone()
+            if row and row[0]:
+                return {"code": row[0]}
+
+        # 生成新邀请码
+        code = _gen_family_code()
+        await db.execute(
+            "UPDATE groups SET family_code=? WHERE id=?",
+            (code, group_id)
+        )
+        await db.commit()
+        return {"code": code}
+    finally:
+        await db.close()
+
+
+@router.post("/family/join")
+async def join_by_code(code: str, user=Depends(get_current_user)):
+    """通过邀请码加入家庭群"""
+    db = await get_db()
+    try:
+        async with db.execute(
+            "SELECT id, name FROM groups WHERE family_code=?",
+            (code.upper(),)
+        ) as c:
+            row = await c.fetchone()
+            if not row:
+                raise HTTPException(404, "邀请码无效")
+
+        group_id, group_name = row[0], row[1]
+
+        # 检查是否已在群中
+        async with db.execute(
+            "SELECT 1 FROM group_members WHERE group_id=? AND user_id=?",
+            (group_id, user["user_id"])
+        ) as c:
+            if await c.fetchone():
+                return {"group_id": group_id, "group_name": group_name, "already_joined": True}
+
+        # 加入群
+        ts = now()
+        await db.execute(
+            "INSERT OR IGNORE INTO group_members (group_id,user_id,role,joined_at) VALUES (?,?,?,?)",
+            (group_id, user["user_id"], "member", ts)
+        )
+        # 同时加入用户的 Agent
+        async with db.execute(
+            "SELECT agent_id FROM users WHERE id=?",
+            (user["user_id"],)
+        ) as c:
+            agent_row = await c.fetchone()
+            if agent_row and agent_row[0]:
+                await db.execute(
+                    "INSERT OR IGNORE INTO group_members (group_id,user_id,role,joined_at) VALUES (?,?,?,?)",
+                    (group_id, agent_row[0], "agent", ts)
+                )
+        await db.commit()
+
+        # 广播加入消息
+        async with db.execute(
+            "SELECT nickname FROM users WHERE id=?",
+            (user["user_id"],)
+        ) as c:
+            u = await c.fetchone()
+            nickname = u[0] if u else "新成员"
+
+        msg_id = gen_id()
+        await db.execute(
+            "INSERT INTO messages (id,group_id,sender_id,sender_name,content,msg_type,created_at) VALUES (?,?,?,?,?,?,?)",
+            (msg_id, group_id, "system", "系统", f"{nickname} 加入了群聊", "system", ts)
+        )
+        await db.commit()
+
+        await ws_manager.broadcast_to_group(group_id, {
+            "type": "system",
+            "data": {"message": f"{nickname} 加入了群聊", "group_id": group_id}
+        })
+
+        return {"group_id": group_id, "group_name": group_name, "already_joined": False}
+    finally:
+        await db.close()
+
+
+@router.get("/family/check-code")
+async def check_invite_code(code: str):
+    """检查邀请码是否有效（无需登录）"""
+    db = await get_db()
+    try:
+        async with db.execute(
+            "SELECT id, name, avatar FROM groups WHERE family_code=?",
+            (code.upper(),)
+        ) as c:
+            row = await c.fetchone()
+            if not row:
+                raise HTTPException(404, "邀请码无效")
+            # 获取成员数
+            async with db.execute(
+                "SELECT COUNT(*) FROM group_members WHERE group_id=?",
+                (row[0],)
+            ) as mc:
+                count = (await mc.fetchone())[0]
+            return {"group_id": row[0], "name": row[1], "avatar": row[2], "member_count": count}
+    finally:
+        await db.close()

@@ -1,4 +1,6 @@
 {
   "navigationBarTitleText": "聊天",
+  "navigationBarBackgroundColor": "#07C160",
+  "navigationBarTextStyle": "white",
   "disableScroll": false
 }
