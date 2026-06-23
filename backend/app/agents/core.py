@@ -509,6 +509,8 @@ class DigitalHuman:
                 self._consecutive += 1
                 await self.memory.add_short_term(reply, self.name)
                 return reply.strip()
+        except ValueError as e:
+            logger.warning(f"[{self.name}] LLM 配置错误: {e}")
         except Exception as e:
             logger.error(f"[{self.name}] LLM 调用失败: {e}")
 
@@ -517,13 +519,19 @@ class DigitalHuman:
     async def _call_llm(self, system_prompt: str, user_message: str) -> str:
         """调用 LLM API"""
         cfg = self.llm_config
+        api_key = cfg.get("api_key", "")
+        if not api_key:
+            raise ValueError("LLM API Key 未配置")
+
         urls = {
             "openai": "https://api.openai.com/v1",
             "deepseek": "https://api.deepseek.com/v1",
             "zhipu": "https://open.bigmodel.cn/api/paas/v4",
             "qwen": "https://dashscope.aliyuncs.com/compatible-mode/v1",
         }
-        base_url = cfg.get("base_url") or urls.get(cfg.get("provider", ""), urls["openai"])
+        base_url = cfg.get("base_url") or urls.get(cfg.get("provider", ""), "")
+        if not base_url or not base_url.startswith(("http://", "https://")):
+            raise ValueError(f"LLM Base URL 无效: '{base_url}'。请在设置中配置正确的 Base URL。")
 
         async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(

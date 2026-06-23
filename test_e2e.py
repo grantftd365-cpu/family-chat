@@ -62,7 +62,7 @@ def test_01_health():
     check("服务运行中", r.status_code == 200, f"status={r.status_code}")
     if r.status_code == 200:
         data = r.json()
-        check("版本号正确", data.get("version") == "1.0.0")
+        check("版本号正确", data.get("version") == "2.0.0")
         return True
     return False
 
@@ -403,7 +403,7 @@ def test_15_refine_text():
         return False
     
     # 用文本炼化
-    r = api("POST", "/api/agent/refine/text", {
+    r = api("POST", "/api/agents/refine/text", {
         "agent_id": agent_id,
         "text": """我叫Grant，今年28岁，在北京做软件开发工作。
 我平时喜欢打篮球、看电影、玩游戏。
@@ -431,7 +431,7 @@ def test_16_refine_chat():
     
     agent_id = USER.get("agent_id", "")
     
-    r = api("POST", "/api/agent/refine/chat", {
+    r = api("POST", "/api/agents/refine/chat", {
         "agent_id": agent_id,
         "text": """昨天和朋友打篮球打到很晚，今天浑身酸痛
 不过赢了比赛还是很开心的！
@@ -462,7 +462,7 @@ def test_17_refine_voice():
     
     agent_id = USER.get("agent_id", "")
     
-    r = api("POST", "/api/agent/refine/voice", {
+    r = api("POST", "/api/agents/refine/voice", {
         "agent_id": agent_id,
         "voice_url": "/api/voices/test_voice.webm",
         "description": "Grant的语音样本，语速中等，声音偏年轻",
@@ -507,7 +507,7 @@ def test_19_memory_search():
     
     agent_id = USER.get("agent_id", "")
     
-    r = api("GET", "/api/memories/search", {"q": "Grant", "agent_id": agent_id}, token=TOKEN)
+    r = api("GET", "/api/agents/agent_id/memories", {"q": "Grant", "agent_id": agent_id}, token=TOKEN)
     check("记忆搜索", r.status_code == 200)
     
     if r.status_code == 200:

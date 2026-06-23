@@ -213,6 +213,8 @@ async def refine_text(req: RefineTextReq, user=Depends(get_current_user)):
     except json.JSONDecodeError:
         await agent.memory.add_long_term(f"[炼化分析] {result[:1000]}", importance=0.8)
         return {"status": "ok", "message": "数据已记录", "raw": result[:500]}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     except Exception as e:
         logger.error(f"炼化失败: {e}")
         raise HTTPException(500, f"炼化失败: {e}")

@@ -157,7 +157,7 @@ async def get_group(group_id: str, user=Depends(get_current_user)):
             return {
                 "id": row[0], "name": row[1], "avatar": row[2],
                 "owner_id": row[3], "description": row[4],
-                "announcement": row[7] or "", "mute_all": bool(row[8]),
+                "announcement": row[6] or "", "mute_all": bool(row[7]),
             }
     finally:
         await db.close()

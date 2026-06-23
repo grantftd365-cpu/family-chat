@@ -171,6 +171,8 @@ if frontend_dir.exists():
 
 # 注册路由
 from .routes import auth, chat, friends, moments, agents, search, notifications, system
+from .routes.websocket import websocket_endpoint as ws_endpoint
+app.add_api_websocket_route("/ws", ws_endpoint)
 app.include_router(auth.router)
 app.include_router(chat.router)
 app.include_router(friends.router)
@@ -358,53 +360,6 @@ async def _generate_agent_voice(agent_id: str, text: str):
     except Exception as e:
         logger.error(f"语音生成失败: {e}")
         return None
-
-
-# ==================== WebSocket ====================
-
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket, token: str = Query("")):
-    user = await get_ws_user(websocket)
-    if not user:
-        await websocket.close(code=4001)
-        return
-
-    user_id = user["user_id"]
-    await ws_manager.connect(user_id, websocket)
-
-    # 更新在线状态
-    db = await get_db()
-    await db.execute("UPDATE users SET online_status='online', last_seen=? WHERE id=?", (now(), user_id))
-    await db.commit()
-
-    try:
-        async with db.execute("SELECT group_id FROM group_members WHERE user_id=?", (user_id,)) as c:
-            async for row in c:
-                await ws_manager.join_group(user_id, row[0])
-    finally:
-        await db.close()
-
-    try:
-        while True:
-            data = await websocket.receive_text()
-            try:
-                msg = json.loads(data)
-                if msg.get("type") == "ping":
-                    await websocket.send_json({"type": "pong"})
-                elif msg.get("type") == "typing":
-                    await ws_manager.broadcast_to_group(
-                        msg.get("group_id", ""),
-                        {"type": "typing", "data": {"user_id": user_id, "user_name": msg.get("name", "")}},
-                        exclude_user=user_id
-                    )
-            except json.JSONDecodeError:
-                pass
-    except WebSocketDisconnect:
-        await ws_manager.disconnect(user_id, websocket)
-        db = await get_db()
-        await db.execute("UPDATE users SET online_status='offline', last_seen=? WHERE id=?", (now(), user_id))
-        await db.commit()
-        await db.close()
 
 
 # ==================== 系统状态 ====================
