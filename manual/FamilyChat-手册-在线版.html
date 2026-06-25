@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FamilyChat 操作手册 v2.0</title>
+<style>
+:root{--green:#07C160;--bg:#f5f5f5;--card:#fff;--text:#333;--sub:#666;--border:#e5e5e5}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg);color:var(--text);line-height:1.6}
+.container{max-width:900px;margin:0 auto;padding:20px}
+.header{text-align:center;padding:60px 20px;background:linear-gradient(135deg,#07C160,#06AD56);color:#fff;border-radius:12px;margin-bottom:30px}
+.header h1{font-size:32px;margin-bottom:8px}
+.header p{opacity:.8;font-size:16px}
+.toc{background:var(--card);border-radius:8px;padding:24px;margin-bottom:24px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.toc h2{font-size:18px;margin-bottom:12px;color:var(--green)}
+.toc ol{padding-left:24px}
+.toc li{margin:6px 0}
+.toc a{color:var(--text);text-decoration:none}
+.toc a:hover{color:var(--green)}
+.section{background:var(--card);border-radius:8px;padding:24px;margin-bottom:20px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.section h2{font-size:22px;color:var(--green);border-bottom:2px solid var(--green);padding-bottom:8px;margin-bottom:16px}
+.section h3{font-size:18px;margin:20px 0 12px}
+.section h4{font-size:16px;margin:16px 0 8px}
+.section p{margin:8px 0}
+.section ul,.section ol{padding-left:24px;margin:8px 0}
+.section li{margin:4px 0}
+.screenshot{text-align:center;margin:16px 0}
+.screenshot img{max-width:100%;height:auto;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.15);border:1px solid var(--border)}
+.screenshot .caption{font-size:13px;color:var(--sub);margin-top:8px}
+table{width:100%;border-collapse:collapse;margin:12px 0}
+th,td{padding:10px 12px;border:1px solid var(--border);text-align:left;font-size:14px}
+th{background:var(--bg);font-weight:600}
+.tip{background:#f0f9eb;border-left:4px solid var(--green);padding:12px 16px;border-radius:0 4px 4px 0;margin:12px 0;font-size:14px}
+.tip::before{content:'💡 '}
+kbd{background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:2px 6px;font-size:13px;font-family:monospace}
+code{background:var(--bg);padding:2px 6px;border-radius:3px;font-size:13px}
+.footer{text-align:center;padding:30px;color:var(--sub);font-size:13px}
+</style>
+</head>
+<body>
+<div class="container">
+
+<div class="header">
+<h1>🏠 FamilyChat 操作手册</h1>
+<p>版本 v2.0.0 · 家庭数字人聊天应用</p>
+</div>
+
+<div class="toc">
+<h2>📑 目录</h2>
+<ol>
+<li><a href="#s1">产品简介</a></li>
+<li><a href="#s2">账号注册与登录</a></li>
+<li><a href="#s3">主页界面概览</a></li>
+<li><a href="#s4">消息列表</a></li>
+<li><a href="#s5">聊天功能</a></li>
+<li><a href="#s6">通讯录</a></li>
+<li><a href="#s7">个人中心</a></li>
+<li><a href="#s8">朋友圈</a></li>
+<li><a href="#s9">搜索功能</a></li>
+<li><a href="#s10">设置与偏好</a></li>
+<li><a href="#s11">AI 模型配置</a></li>
+<li><a href="#s12">炼化数字人</a></li>
+<li><a href="#s13">收藏功能</a></li>
+<li><a href="#s14">红包功能</a></li>
+<li><a href="#s15">系统统计与备份</a></li>
+<li><a href="#s16">深色模式</a></li>
+</ol>
+</div>
+
+<!-- Section 1 -->
+<div class="section" id="s1">
+<h2>1. 产品简介</h2>
+<p><strong>FamilyChat</strong> 是一款专为家庭设计的数字人聊天应用，采用微信风格界面，支持：</p>
+<ul>
+<li>💬 <strong>即时通讯</strong> — 文字、语音、图片、文件消息</li>
+<li>🤖 <strong>AI 数字人</strong> — 可自定义性格的家庭 AI 助手</li>
+<li>📷 <strong>朋友圈</strong> — 分享家庭生活动态</li>
+<li>🧧 <strong>红包</strong> — 家庭互动红包</li>
+<li>⭐ <strong>收藏</strong> — 保存重要内容</li>
+<li>🔍 <strong>搜索</strong> — 全局搜索联系人、群组和聊天记录</li>
+<li>🌙 <strong>深色模式</strong> — 护眼暗色主题</li>
+</ul>
+</div>
+
+<!-- Section 2 -->
+<div class="section" id="s2">
+<h2>2. 账号注册与登录</h2>
+
+<h3>2.1 登录页面</h3>
+<p>首次打开应用会看到登录页面，顶部显示应用 Logo（🏠）和名称。</p>
+<div class="screenshot">
+<img src="https://raw.githubusercontent.com/grantftd365-cpu/family-chat/main/manual/img/01-login.png" alt="登录页面">
+<div class="caption">登录页面</div>
+</div>
+<p><strong>操作步骤：</strong></p>
+<ol>
+<li>输入你的 <strong>邮箱地址</strong></li>
+<li>输入 <strong>密码</strong></li>
+<li>点击 <strong>「登录」</strong> 按钮</li>
+</ol>
+<div class="tip">如果已有账号，直接登录即可。首次使用需要先注册。</div>
+
+<h3>2.2 注册新账号</h3>
+<p>点击登录页面底部的 <strong>「注册新账号」</strong> 链接，切换到注册模式。</p>
+<div class="screenshot">
+<img src="https://raw.githubusercontent.com/grantftd365-cpu/family-chat/main/manual/img/02-register.png" alt="注册页面">
+<div class="caption">注册页面</div>
+</div>
+<p><strong>注册需要填写：</strong></p>
+<table>
+<tr><th>字段</th><th>说明</th><th>必填</th></tr>
+<tr><td>昵称</td><td>你在家庭群中显示的名字</td><td>✅</td></tr>
+<tr><td>家庭角色</td><td>如：爸爸、妈妈、儿子、女儿等</td><td>❌</td></tr>
+<tr><td>邮箱</td><td>用于登录的邮箱地址</td><td>✅</td></tr>
+<tr><td>密码</td><td>登录密码</td><td>✅</td></tr>
+</table>
+<p>填写完成后点击 <strong>「注册」</strong> 按钮。注册成功后会自动进入主界面。</p>
+<div class="tip">注册后可以随时在「设置 → 编辑资料」中修改昵称和角色信息。</div>
+</div>
+
+<!-- Section 3 -->
+<div class="section" id="s3">
+<h2>3. 主页界面概览</h2>
+<p>登录成功后进入主界面，整体布局与微信一致：</p>
+<div class="screenshot">
+<img src="https://raw.githubusercontent.com/grantftd365-cpu/family-chat/main/manual/img/03-main-chat-list.png" alt="主界面">
+<div class="caption">主界面 - 消息列表</div>
+</div>
+
+<h3>界面布局说明</h3>
+<table>
+<tr><th>区域</th><th>位置</th><th>功能</th></tr>
+<tr><td>顶部标题栏</td><td>最上方</td><td>显示「微信」标题，右侧有 🔍 搜索和 ＋ 创建群聊按钮</td></tr>
+<tr><td>内容区域</td><td>中间</td><td>显示当前 Tab 的内容（消息列表/通讯录/个人中心）</td></tr>
+<tr><td>底部导航栏</td><td>最下方</td><td>三个 Tab 切换：💬 微信、👥 通讯录、👤 我</td></tr>
+</table>
+
+<h3>底部导航栏</h3>
+<ul>
+<li><strong>💬 微信</strong> — 消息列表，显示所有聊天会话</li>
+<li><strong>👥 通讯录</strong> — 查看 AI 数字人和好友列表</li>
+<li><strong>👤 我</strong> — 个人中心，包含朋友圈、设置等功能</li>
+</ul>
+</div>
+
+<!-- Section 4 -->
+<div class="section" id="s4">
+<h2>4. 消息列表</h2>
+<p>消息列表页显示所有聊天会话，每个会话项包含：</p>
+<div class="screenshot">
+<img src="https://raw.githubusercontent.com/grantftd365-cpu/family-chat/main/manual/img/04-chat-unread.png" alt="消息列表">
+<div class="caption">消息列表（含未读提醒）</div>
+</div>
+
+<h3>会话项信息</h3>
+<table>
+<tr><th>元素</th><th>说明</th></tr>
+<tr><td>头像</td><td>左侧显示群聊/联系人头像（支持 emoji 或图片）</td></tr>
+<tr><td>名称</td><td>群聊名称或联系人昵称</td></tr>
+<tr><td>最后消息</td><td>最近一条消息的预览文本</td></tr>
+<tr><td>时间</td><td>消息发送时间（今天显示时分，昨天显示「昨天」，更早显示日期）</td></tr>
+<tr><td>未读角标</td><td>红色数字角标，表示未读消息数量</td></tr>
+</table>
+
+<h3>操作</h3>
+<ul>
+<li><strong>点击会话项</strong> → 进入聊天页面</li>
+<li><strong>点击右上角 🔍</strong> → 进入搜索页面</li>
+<li><strong>点击右上角 ＋</strong> → 创建新群聊</li>
+</ul>
+</div>
+
+<!-- Section 5 -->
+<div class="section" id="s5">
+<h2>5. 聊天功能</h2>
+
+<h3>5.1 聊天界面</h3>
+<p>点击任意会话进入聊天页面：</p>
+<div class="screenshot">
+<img src="https://raw.githubusercontent.com/grantftd365-cpu/family-chat/main/manual/img/07-chat.png" alt="聊天界面">
+<div class="caption">聊天界面</div>
+</div>
+
+<h3>界面元素说明</h3>
+<table>
+<tr><th>区域</th><th>说明</th></tr>
+<tr><td>顶部导航栏</td><td>显示群聊名称，左侧返回按钮 ‹，右侧菜单按钮 ⋯</td></tr>
+<tr><td>消息区域</td><td>中间滚动区域，显示所有聊天消息</td></tr>
+<tr><td>输入区域</td><td>底部工具栏，包含表情、图片、文件、语音等按钮和输入框</td></tr>
+</table>
+
+<h3>消息类型</h3>
+<table>
+<tr><th>类型</th><th>说明</th></tr>
+<tr><td>📝 文字消息</td><td>自己发送的在右侧（绿色），他人在左侧（白色）。AI 消息带「AI」标签</td></tr>
+<tr><td>🖼️ 图片消息</td><td>点击可全屏查看，支持发送本地图片</td></tr>
+<tr><td>🎤 语音消息</td><td>带有声波动画效果，点击即可播放</td></tr>
+<tr><td>📄 文件消息</td><td>显示文件图标、文件名和文件大小</td></tr>
+<tr><td>🧧 红包消息</td><td>金色渐变卡片样式，显示祝福语</td></tr>
+<tr><td>↩️ 引用回复</td><td>消息气泡上方显示被引用的消息摘要</td></tr>
+<tr><td>😀 表情回应</td><td>消息下方显示表情回应（Reactions）</td></tr>
+<tr><td>📌 系统消息</td><td>居中灰色显示，如「xxx 加入了群聊」</td></tr>
+</table>
+
+<h3>5.2 发送消息</h3>
+
+<h4>发送文字</h4>
+<ol>
+<li>在底部输入框中输入文字</li>
+<li>点击 <strong>「发送」</strong> 按钮或按 <kbd>Enter</kbd> 键发送</li>
+<li><kbd>Shift</kbd> + <kbd>Enter</kbd> 可换行</li>
+</ol>
+
+<h4>发送图片</h4>
+<ol>
+<li>点击输入栏左侧的 📷 按钮</li>
+<li>从文件选择器中选择图片</li>
+<li>图片会自动上传并发送</li>
+</ol>
+
+<h4>发送文件</h4>
+<ol>
+<li>点击输入栏左侧的 📎 按钮</li>
+<li>选择要发送的文件</li>
+<li>文件会自动上传并发送</li>
+</ol>
+
+<h4>发送语音</h4>
+<ol>
+<li>点击 🎤 按钮切换到语音模式</li>
+<li>输入框变为 <strong>「按住 说话」</strong> 按钮</li>
+<li>按住按钮开始录音，松开结束并发送</li>
+</ol>
+<div class="tip">再次点击 🎤 按钮可切回文字输入模式。</div>
+
+<h3>5.3 表情面板</h3>
+<p>点击输入栏左侧的 😊 按钮打开表情面板：</p>
+<div class="screenshot">
+<img src="https://raw.githubusercontent.com/grantftd365-cpu/family-chat/main/manual/img/08-emoji.png" alt="表情面板">
+<div class="caption">表情面板</div>
+</div>
+<p>表情面板包含 38 个常用 emoji 表情，点击即可插入到输入框中。</p>
+
+<h3>5.4 消息操作菜单</h3>
+<p><strong>长按/右键点击</strong> 消息气泡，会弹出操作菜单：</p>
+<div class="screenshot">
+<img src="https://raw.githubusercontent.com/grantftd365-cpu/family-chat/main/manual/img/09-context-menu.png" alt="消息操作菜单">
+<div class="caption">消息操作菜单</div>
+</div>
+
+<table>
+<tr><th>操作</th><th>说明</th></tr>
+<tr><td>↩ 回复</td><td>引用该消息进行回复</td></tr>
+<tr><td>📋 复制</td><td>复制消息文本到剪贴板</td></tr>
+<tr><td>↪ 转发</td><td>将消息转发到其他群聊</td></tr>
+<tr><td>⭐ 收藏</td><td>将消息添加到收藏</td></tr>
+<tr><td>📌 置顶</td><td>将消息设为群置顶</td></tr>
+<tr><td>🗑️ 撤回</td><td>撤回自己发送的消息（仅限自己的消息）</td></tr>
+</table>
+
+<h3>5.5 群成员查看</h3>
+<p>点击聊天页面右上角的 <strong>⋯</strong> 按钮，可查看群成员列表：</p>
+<div class="screenshot">
+<img src="https://raw.githubusercontent.com/grantftd365-cpu/family-chat/main/manual/img/10-group-info.png" alt="群成员">
+<div class="caption">群成员列表</div>
+</div>
+
+<h3>5.6 置顶消息</h3>
+<p>在消息操作菜单中选择「置顶」，可将重要消息置顶：</p>
+<div class="screenshot">
+<img src="https://raw.githubusercontent.com/grantftd365-cpu/family-chat/main/manual/img/24-pinned.png" alt="置顶消息">
+<div class="caption">置顶消息</div>
+</div>
+</div>
+
+<!-- Section 6 -->
+<div class="section" id="s6">
+<h2>6. 通讯录</h2>
+<p>点击底部导航栏的 <strong>👥 通讯录</strong> Tab：</p>
+<div class="screenshot">
+<img src="https://raw.githubusercontent.com/grantftd365-cpu/family-chat/main/manual/img/05-contacts.png" alt="通讯录">
+<div class="caption">通讯录</div>
+</div>
+
+<h3>通讯录结构</h3>
+<table>
+<tr><th>区域</th><th>说明</th></tr>
+<tr><td>数字人</td><td>显示所有 AI 数字人联系人，带有绿色「AI」标签</td></tr>
+<tr><td>好友</td><td>显示所有真人好友，右侧显示在线状态（🟢 在线）</td></tr>
+<tr><td>新的好友请求</td><td>如有待处理的好友请求，会在此显示（可接受/拒绝）</td></tr>
+</table>
+
+<h3>操作</h3>
+<ul>
+<li><strong>点击数字人</strong> → 查看数字人详情</li>
+<li><strong>点击好友</strong> → 查看好友资料</li>
+<li><strong>接受好友请求</strong> → 点击请求项右侧的「接受」按钮</li>
+</ul>
+</div>
+
+<!-- Section 7 -->
+<div class="section" id="s7">
+<h2>7. 个人中心</h2>
+<p>点击底部导航栏的 <strong>👤 我</strong> Tab：</p>
+<div class="screenshot">
+<img src="https://raw.githubusercontent.com/grantftd365-cpu/family-chat/main/manual/img/06-profile.png" alt="个人中心">
+<div class="caption">个人中心</div>
+</div>
+
+<h3>个人信息区域</h3>
+<p>顶部显示蓝色渐变背景的个人信息卡片：头像、昵称、签名。</p>
+
+<h3>功能入口</h3>
+<table>
+<tr><th>入口</th><th>说明</th></tr>
+<tr><td>📷 朋友圈</td><td>进入朋友圈查看/发布动态</td></tr>
+<tr><td>🧪 炼化数字人</td><td>用聊天记录训练 AI 数字人的性格</td></tr>
+<tr><td>⭐ 收藏</td><td>查看已收藏的消息内容</td></tr>
+<tr><td>⚙️ 设置</td><td>进入设置页面</td></tr>
+</table>
+</div>
+
+<!-- Section 8 -->
+<div class="section" id="s8">
+<h2>8. 朋友圈</h2>
+
+<h3>8.1 查看朋友圈</h3>
+<p>从个人中心点击 <strong>「朋友圈」</strong> 进入：</p>
+<div class="screenshot">
+<img src="https://raw.githubusercontent.com/grantftd365-cpu/family-chat/main/manual/img/11-moments.png" alt="朋友圈">
+<div class="caption">朋友圈</div>
+</div>
+
+<h3>动态卡片信息</h3>
+<table>
+<tr><th>元素</th><th>说明</th></tr>
+<tr><td>头像 + 昵称</td><td>发布者的头像和名称</td></tr>
+<tr><td>文字内容</td><td>动态的文字内容</td></tr>
+<tr><td>图片</td><td>如有附带图片，以网格形式展示</td></tr>
+<tr><td>时间</td><td>发布时间</td></tr>
+<tr><td>点赞</td><td>显示点赞人数和名单，❤️ 表示已点赞</td></tr>
+<tr><td>评论</td><td>显示评论内容</td></tr>
+</table>
+
+<h3>8.2 发布朋友圈</h3>
+<p>点击朋友圈页面右上角的 📷 按钮：</p>
+<div class="screenshot">
+<img src="https://raw.githubusercontent.com/grantftd365-cpu/family-chat/main/manual/img/21-compose-moment.png" alt="发布朋友圈">
+<div class="caption">发布朋友圈</div>
+</div>
+<p><strong>发布步骤：</strong></p>
+<ol>
+<li>在文本框中输入想要分享的内容</li>
+<li>点击 <strong>「📷 添加图片」</strong> 选择图片（可选，支持多张）</li>
+<li>预览图片缩略图会显示在下方</li>
+<li>点击 <strong>「发表」</strong> 发布动态</li>
+</ol>
+</div>
+
+<!-- Section 9 -->
+<div class="section" id="s9">
+<h2>9. 搜索功能</h2>
+<p>点击主页右上角的 🔍 按钮进入搜索页面：</p>
+<div class="screenshot">
+<img src="https://raw.githubusercontent.com/grantftd365-cpu/family-chat/main/manual/img/12-search.png" alt="搜索">
+<div class="caption">搜索功能</div>
+</div>
+
+<h3>搜索范围</h3>
+<table>
+<tr><th>类别</th><th>说明</th></tr>
+<tr><td>联系人</td><td>匹配昵称的联系人</td></tr>
+<tr><td>群组</td><td>匹配名称的群聊</td></tr>
+<tr><td>聊天记录</td><td>匹配消息内容的聊天记录，显示发送者、群名和时间</td></tr>
+</table>
+<div class="tip">输入关键词后自动搜索（300ms 防抖），点击结果可跳转到对应聊天。</div>
+</div>
+
+<!-- Section 10 -->
+<div class="section" id="s10">
+<h2>10. 设置与偏好</h2>
+<p>从个人中心点击 <strong>「设置」</strong> 进入设置页面：</p>
+<div class="screenshot">
+<img src="https://raw.githubusercontent.com/grantftd365-cpu/family-chat/main/manual/img/13-settings.png" alt="设置">
+<div class="caption">设置页面</div>
+</div>
+
+<h3>设置项说明</h3>
+<table>
+<tr><th>设置项</th><th>说明</th></tr>
+<tr><td>🌙 深色模式</td><td>开关切换深色/浅色主题</td></tr>
+<tr><td>🤖 AI 模型配置</td><td>配置 AI 数字人使用的模型和 API</td></tr>
+<tr><td>⭐ 我的收藏</td><td>查看收藏的消息内容</td></tr>
+<tr><td>🧪 炼化数字人</td><td>用文本训练数字人性格</td></tr>
+<tr><td>👤 编辑资料</td><td>修改昵称、签名、性别、地区</td></tr>
+<tr><td>📊 系统统计</td><td>查看系统数据统计</td></tr>
+<tr><td>💾 创建备份</td><td>创建系统数据备份</td></tr>
+<tr><td>版本</td><td>显示当前版本号（v2.0.0）</td></tr>
+<tr><td>退出登录</td><td>退出当前账号</td></tr>
+</table>
+</div>
+
+<!-- Section 11 -->
+<div class="section" id="s11">
+<h2>11. AI 模型配置</h2>
+<p>从设置页面点击 <strong>「🤖 AI 模型配置」</strong>：</p>
+<div class="screenshot">
+<img src="https://raw.githubusercontent.com/grantftd365-cpu/family-chat/main/manual/img/15-ai-config.png" alt="AI 模型配置">
+<div class="caption">AI 模型配置</div>
+</div>
+
+<h3>支持的 AI 提供商</h3>
+<table>
+<tr><th>提供商</th><th>说明</th></tr>
+<tr><td>DeepSeek</td><td>DeepSeek AI 模型</td></tr>
+<tr><td>OpenAI</td><td>GPT 系列模型</td></tr>
+<tr><td>智谱AI</td><td>智谱 GLM 系列</td></tr>
+<tr><td>通义千问</td><td>阿里通义千问</td></tr>
+<tr><td>本地模型</td><td>自建本地模型服务</td></tr>
+</table>
+
+<h3>配置步骤</h3>
+<ol>
+<li>选择 <strong>AI 提供商</strong></li>
+<li>输入 <strong>API Key</strong></li>
+<li>输入 <strong>模型名称</strong>（如 <code>deepseek-chat</code>）</li>
+<li>如需自定义接口地址，填写 <strong>Base URL</strong>（可选）</li>
+<li>点击 <strong>「保存」</strong></li>
+</ol>
+</div>
+
+<!-- Section 12 -->
+<div class="section" id="s12">
+<h2>12. 炼化数字人</h2>
+<p>「炼化」功能可以让你通过聊天记录或自我介绍来训练 AI 数字人的性格特征。</p>
+<div class="screenshot">
+<img src="https://raw.githubusercontent.com/grantftd365-cpu/family-chat/main/manual/img/16-refine.png" alt="炼化数字人">
+<div class="caption">炼化数字人</div>
+</div>
+
+<h3>操作步骤</h3>
+<ol>
+<li><strong>选择数字人</strong> — 从下拉列表中选择要炼化的 AI 数字人</li>
+<li><strong>输入内容</strong> — 粘贴聊天记录或自我介绍文本</li>
+<li><strong>点击「开始炼化」</strong> — AI 会分析文本并提取性格特征</li>
+</ol>
+<div class="tip">炼化内容越丰富，数字人的性格特征越准确。建议提供多段对话记录。</div>
+</div>
+
+<!-- Section 13 -->
+<div class="section" id="s13">
+<h2>13. 收藏功能</h2>
+<div class="screenshot">
+<img src="https://raw.githubusercontent.com/grantftd365-cpu/family-chat/main/manual/img/22-favorites.png" alt="收藏">
+<div class="caption">收藏列表</div>
+</div>
+<p>在聊天中通过消息菜单的 <strong>「⭐ 收藏」</strong> 添加收藏。支持收藏文字、图片等不同类型的消息，显示来源发送者和收藏时间。</p>
+</div>
+
+<!-- Section 14 -->
+<div class="section" id="s14">
+<h2>14. 红包功能</h2>
+<div class="screenshot">
+<img src="https://raw.githubusercontent.com/grantftd365-cpu/family-chat/main/manual/img/19-red-envelope.png" alt="发红包">
+<div class="caption">发红包</div>
+</div>
+
+<h3>发红包步骤</h3>
+<ol>
+<li>输入 <strong>金额</strong>（元，最多 200 元）</li>
+<li>输入 <strong>祝福语</strong>（默认「恭喜发财」）</li>
+<li>设置 <strong>红包个数</strong>（支持拼手气红包）</li>
+<li>点击 <strong>「塞钱进红包」</strong> 发出</li>
+</ol>
+<p>红包消息显示为金色渐变卡片，点击可拆开。</p>
+</div>
+
+<!-- Section 15 -->
+<div class="section" id="s15">
+<h2>15. 系统统计与备份</h2>
+<div class="screenshot">
+<img src="https://raw.githubusercontent.com/grantftd365-cpu/family-chat/main/manual/img/23-stats.png" alt="系统统计">
+<div class="caption">系统统计</div>
+</div>
+<p>统计信息包括：用户总数、数字人总数、消息总数、群组总数、朋友圈动态数、记忆条数、数据库大小。</p>
+<div class="tip">从设置页面点击「💾 创建备份」可创建完整的数据备份。</div>
+</div>
+
+<!-- Section 16 -->
+<div class="section" id="s16">
+<h2>16. 深色模式</h2>
+<div class="screenshot">
+<img src="https://raw.githubusercontent.com/grantftd365-cpu/family-chat/main/manual/img/14-dark-mode.png" alt="深色模式">
+<div class="caption">深色模式</div>
+</div>
+<p>深色模式特点：</p>
+<ul>
+<li>背景色变为深黑色</li>
+<li>文字颜色自动调整为浅色</li>
+<li>所有组件（聊天气泡、卡片、输入框等）同步适配</li>
+<li>设置会自动保存，下次打开时保持</li>
+</ul>
+</div>
+
+<!-- Quick Reference -->
+<div class="section">
+<h2>附录：快捷操作汇总</h2>
+<table>
+<tr><th>操作</th><th>方式</th></tr>
+<tr><td>发送消息</td><td><kbd>Enter</kbd> 键</td></tr>
+<tr><td>换行</td><td><kbd>Shift</kbd> + <kbd>Enter</kbd></td></tr>
+<tr><td>回复消息</td><td>右键/长按消息 → 回复</td></tr>
+<tr><td>复制消息</td><td>右键/长按消息 → 复制</td></tr>
+<tr><td>转发消息</td><td>右键/长按消息 → 转发</td></tr>
+<tr><td>收藏消息</td><td>右键/长按消息 → 收藏</td></tr>
+<tr><td>撤回消息</td><td>右键/长按自己的消息 → 撤回</td></tr>
+<tr><td>置顶消息</td><td>右键/长按消息 → 置顶</td></tr>
+<tr><td>发送图片</td><td>点击 📷 按钮</td></tr>
+<tr><td>发送文件</td><td>点击 📎 按钮</td></tr>
+<tr><td>发送语音</td><td>点击 🎤 → 按住说话</td></tr>
+<tr><td>插入表情</td><td>点击 😊 按钮</td></tr>
+<tr><td>搜索</td><td>主页右上角 🔍</td></tr>
+<tr><td>创建群聊</td><td>主页右上角 ＋</td></tr>
+</table>
+</div>
+
+<!-- FAQ -->
+<div class="section">
+<h2>常见问题</h2>
+
+<h3>Q: 忘记密码怎么办？</h3>
+<p>A: 当前版本暂不支持密码重置功能，请联系系统管理员。</p>
+
+<h3>Q: 如何添加好友？</h3>
+<p>A: 当前版本的好友添加需要通过系统管理员或群内互动完成。</p>
+
+<h3>Q: 数字人不回复怎么办？</h3>
+<p>A: 请检查「设置 → AI 模型配置」中的 API Key 是否正确配置。</p>
+
+<h3>Q: 语音消息无法录制？</h3>
+<p>A: 浏览器需要授予麦克风权限。请在浏览器设置中允许网站使用麦克风。</p>
+
+<h3>Q: 如何删除聊天记录？</h3>
+<p>A: 当前版本暂不支持删除单条消息，可通过「撤回」功能撤回近期消息。</p>
+</div>
+
+<div class="footer">
+<p>📖 本手册覆盖 FamilyChat v2.0.0 全部功能。如有疑问，请联系系统管理员。</p>
+</div>
+
+</div>
+</body>
+</html>
