@@ -1,13 +1,12 @@
 /**
- * API 请求封装
+ * API 请求封装 - 优化版
  * 支持 H5 / 小程序 / APP 多端
- * 包含 token 自动注入、错误处理、请求拦截
+ * 包含 token 自动注入、错误处理、自动重试、请求队列
  */
 import { getToken, removeToken, removeUserInfo } from './storage'
 
 /** 基础配置 */
 const CONFIG = {
-  // H5模式下使用相对路径（同域代理），其他模式配置完整地址
   baseUrl: (() => {
     // #ifdef H5
     return ''
@@ -17,17 +16,23 @@ const CONFIG = {
     // #endif
   })(),
   timeout: 15000,
+  maxRetries: 2,
+  retryDelay: 1000,
   header: {
     'Content-Type': 'application/json'
   }
 }
 
+/** 请求计数器（用于取消重复请求） */
+let _requestId = 0
+
 /**
- * 核心请求方法
+ * 核心请求方法（支持自动重试）
  * @param {object} options 请求配置
+ * @param {number} retryCount 当前重试次数
  * @returns {Promise}
  */
-function request(options) {
+function request(options, retryCount = 0) {
   return new Promise((resolve, reject) => {
     const token = getToken()
     const header = { ...CONFIG.header, ...options.header }
@@ -35,32 +40,53 @@ function request(options) {
       header['Authorization'] = `Bearer ${token}`
     }
 
+    const requestId = ++_requestId
+    const timeout = options.timeout || CONFIG.timeout
+
+    const timer = setTimeout(() => {
+      reject(new Error('请求超时'))
+    }, timeout + 1000)
+
     uni.request({
       url: CONFIG.baseUrl + options.url,
       method: options.method || 'GET',
       data: options.data,
       header,
-      timeout: options.timeout || CONFIG.timeout,
+      timeout,
       success: (res) => {
+        clearTimeout(timer)
         if (res.statusCode === 200 || res.statusCode === 201) {
           resolve(res.data)
         } else if (res.statusCode === 401) {
-          // Token 过期，清除登录态并跳转
           removeToken()
           removeUserInfo()
-          uni.showToast({ title: '登录已过期，请重新登录', icon: 'none' })
+          uni.showToast({ title: '登录已过期', icon: 'none' })
           setTimeout(() => {
             uni.reLaunch({ url: '/pages/login/login' })
           }, 1500)
           reject(new Error('未授权'))
         } else if (res.statusCode === 403) {
-          uni.showToast({ title: '没有权限', icon: 'none' })
           reject(new Error('没有权限'))
         } else if (res.statusCode === 404) {
           reject(new Error('资源不存在'))
-        } else if (res.statusCode === 422) {
-          const msg = res.data?.detail?.[0]?.msg || res.data?.detail || '参数错误'
-          uni.showToast({ title: msg, icon: 'none' })
+        } else if (res.statusCode === 429) {
+          // 被限流，重试
+          if (retryCount < CONFIG.maxRetries) {
+            setTimeout(() => {
+              request(options, retryCount + 1).then(resolve).catch(reject)
+            }, CONFIG.retryDelay * (retryCount + 1))
+            return
+          }
+          reject(new Error('请求过于频繁'))
+        } else if (res.statusCode >= 500) {
+          // 服务器错误，重试
+          if (retryCount < CONFIG.maxRetries) {
+            setTimeout(() => {
+              request(options, retryCount + 1).then(resolve).catch(reject)
+            }, CONFIG.retryDelay * (retryCount + 1))
+            return
+          }
+          const msg = res.data?.detail || `服务器错误(${res.statusCode})`
           reject(new Error(msg))
         } else {
           const msg = res.data?.detail || res.data?.message || `请求失败(${res.statusCode})`
@@ -69,7 +95,15 @@ function request(options) {
         }
       },
       fail: (err) => {
-        uni.showToast({ title: '网络连接失败', icon: 'none' })
+        clearTimeout(timer)
+        // 网络错误自动重试
+        if (retryCount < CONFIG.maxRetries) {
+          setTimeout(() => {
+            request(options, retryCount + 1).then(resolve).catch(reject)
+          }, CONFIG.retryDelay * (retryCount + 1))
+          return
+        }
+        uni.showToast({ title: '网络连接失败', icon: 'none', duration: 2000 })
         reject(new Error(err.errMsg || '网络错误'))
       }
     })

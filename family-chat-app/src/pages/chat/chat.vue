@@ -558,14 +558,30 @@ function chooseImage() {
 
 // 选择文件
 function chooseFile() {
+  showMore.value = false
   // #ifdef H5
   const input = document.createElement('input')
   input.type = 'file'
   input.onchange = async (e) => {
     const file = e.target.files[0]
     if (!file) return
-    showMore.value = false
-    uni.showToast({ title: '文件发送功能开发中', icon: 'none' })
+    uni.showLoading({ title: '上传中...' })
+    try {
+      const uploadRes = await api.uploadVoice(file.path || file.name)
+      await chatStore.sendMessage({
+        group_id: groupId.value,
+        content: file.name || '文件',
+        msg_type: 'file',
+        media_url: uploadRes.url || '',
+        file_name: file.name,
+        file_size: file.size
+      })
+      uni.hideLoading()
+      scrollToBottom()
+    } catch (e) {
+      uni.hideLoading()
+      uni.showToast({ title: '文件发送失败', icon: 'none' })
+    }
   }
   input.click()
   // #endif
@@ -574,18 +590,23 @@ function chooseFile() {
     count: 1,
     type: 'file',
     success: async (res) => {
-      showMore.value = false
       const file = res.tempFiles[0]
+      uni.showLoading({ title: '上传中...' })
       try {
+        const uploadRes = await api.uploadVoice(file.path || file.url)
         await chatStore.sendMessage({
           group_id: groupId.value,
           content: file.name || '文件',
           msg_type: 'file',
-          media_url: file.path
+          media_url: uploadRes.url || file.path,
+          file_name: file.name,
+          file_size: file.size
         })
+        uni.hideLoading()
         scrollToBottom()
       } catch (e) {
-        console.error('文件发送失败:', e)
+        uni.hideLoading()
+        uni.showToast({ title: '文件发送失败', icon: 'none' })
       }
     }
   })
@@ -595,7 +616,40 @@ function chooseFile() {
 // 发红包
 function sendRedEnvelope() {
   showMore.value = false
-  uni.showToast({ title: '红包功能开发中', icon: 'none' })
+  uni.showModal({
+    title: '🧧 发红包',
+    editable: true,
+    placeholderText: '金额（元）',
+    success: async (res) => {
+      if (res.confirm && res.content) {
+        const amount = parseFloat(res.content)
+        if (!amount || amount <= 0 || amount > 200) {
+          uni.showToast({ title: '金额需在 0.01-200 之间', icon: 'none' })
+          return
+        }
+        uni.showModal({
+          title: '祝福语',
+          editable: true,
+          placeholderText: '恭喜发财',
+          success: async (res2) => {
+            const greeting = res2.content || '恭喜发财'
+            try {
+              await api.sendMessage({
+                group_id: groupId.value,
+                content: greeting,
+                msg_type: 'red_envelope',
+                extra: JSON.stringify({ amount, greeting })
+              })
+              uni.showToast({ title: '红包已发出', icon: 'success' })
+              scrollToBottom()
+            } catch (e) {
+              uni.showToast({ title: '发送失败', icon: 'none' })
+            }
+          }
+        })
+      }
+    }
+  })
 }
 
 // 选择位置
@@ -650,8 +704,22 @@ function previewImage(msg) {
 }
 
 // 打开红包
-function openRedEnvelope(msg) {
-  uni.showToast({ title: '红包已领取', icon: 'success' })
+async function openRedEnvelope(msg) {
+  try {
+    // 解析红包信息
+    let extra = {}
+    try { extra = JSON.parse(msg.extra || '{}') } catch (e) {}
+    const amount = extra.amount || '未知'
+    const greeting = extra.greeting || '恭喜发财'
+    uni.showModal({
+      title: '🧧 ' + greeting,
+      content: `金额: ${amount}元`,
+      showCancel: false,
+      confirmText: '好的'
+    })
+  } catch (e) {
+    uni.showToast({ title: '红包已领取', icon: 'success' })
+  }
 }
 
 // 消息长按

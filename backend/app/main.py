@@ -151,6 +151,8 @@ async def lifespan(app: FastAPI):
     yield
 
     proactive_task.cancel()
+    from .models.database import close_db
+    await close_db()
     logger.info("👋 FamilyChat 关闭")
 
 

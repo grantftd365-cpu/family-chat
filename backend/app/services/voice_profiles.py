@@ -153,13 +153,19 @@ class VoiceProfileManager:
                 shutil.copy2(audio_file_path, saved_path)
                 original_file = saved_path
 
-            # 分析音频特征
-            features = await self._analyze_audio(saved_path)
-            pitch = features.get("pitch", 0.5)
-            speed = features.get("speed", 1.0)
-            duration = features.get("duration", 0)
-            if not gender:
-                gender = features.get("gender", "")
+            # 分析音频特征（容错处理）
+            try:
+                features = await self._analyze_audio(saved_path)
+                pitch = features.get("pitch", 0.5)
+                speed = features.get("speed", 1.0)
+                duration = features.get("duration", 0)
+                if not gender:
+                    gender = features.get("gender", "")
+            except Exception as e:
+                logger.warning(f"音频分析失败，使用默认值: {e}")
+                pitch = 0.5
+                speed = 1.0
+                duration = 0
 
             # 匹配最接近的 edge-tts 声音
             if not edge_voice_id:
@@ -215,6 +221,8 @@ class VoiceProfileManager:
                     if stream.get("codec_type") == "audio":
                         features["sample_rate"] = int(stream.get("sample_rate", 16000))
                         break
+        except FileNotFoundError:
+            logger.warning("ffprobe 未安装，跳过音频元信息分析")
         except Exception as e:
             logger.warning(f"ffprobe 分析失败: {e}")
 

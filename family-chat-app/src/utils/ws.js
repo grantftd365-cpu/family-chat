@@ -1,6 +1,6 @@
 /**
- * WebSocket 封装
- * 支持自动重连、心跳检测、消息队列
+ * WebSocket 封装 - 优化版
+ * 支持自动重连、心跳检测、消息队列、断线缓存
  */
 import { getToken } from './storage'
 
@@ -19,11 +19,13 @@ class WsClient {
     this.reconnectTimer = null
     this.heartbeatTimer = null
     this.reconnectAttempts = 0
-    this.maxReconnectAttempts = 10
-    this.reconnectDelay = 3000
-    this.heartbeatInterval = 30000
+    this.maxReconnectAttempts = 15
+    this.reconnectDelay = 2000
+    this.heartbeatInterval = 25000
     this.messageQueue = []
     this.isManualClose = false
+    this._lastPong = 0
+    this._connectionId = 0
   }
 
   /**
@@ -31,6 +33,7 @@ class WsClient {
    */
   getUrl() {
     const token = getToken()
+    if (!token) return ''
     // #ifdef H5
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
     return `${protocol}//${location.host}/ws?token=${token}`
@@ -52,10 +55,14 @@ class WsClient {
 
     this.isManualClose = false
     this.state = STATE.CONNECTING
+    this._connectionId++
+
+    const url = this.getUrl()
+    if (!url) return
 
     try {
       this.socket = uni.connectSocket({
-        url: this.getUrl(),
+        url,
         success: () => {},
         fail: (err) => {
           console.error('WebSocket 连接失败:', err)
@@ -68,6 +75,7 @@ class WsClient {
         console.log('WebSocket 已连接')
         this.state = STATE.CONNECTED
         this.reconnectAttempts = 0
+        this._lastPong = Date.now()
         this.startHeartbeat()
         this.flushQueue()
         this.emit('connected')
@@ -123,7 +131,7 @@ class WsClient {
         this.emit('reaction', data)
         break
       case 'pong':
-        // 心跳回复，忽略
+        this._lastPong = Date.now()
         break
       default:
         this.emit(type, data)
@@ -136,9 +144,18 @@ class WsClient {
   send(data) {
     const msg = typeof data === 'string' ? data : JSON.stringify(data)
     if (this.state === STATE.CONNECTED && this.socket) {
-      this.socket.send({ data: msg })
+      try {
+        this.socket.send({ data: msg })
+      } catch (e) {
+        console.error('WebSocket 发送失败:', e)
+        this.messageQueue.push(msg)
+      }
     } else {
       this.messageQueue.push(msg)
+      // 如果断开连接，尝试重连
+      if (this.state === STATE.DISCONNECTED) {
+        this.connect()
+      }
     }
   }
 
@@ -157,11 +174,19 @@ class WsClient {
    * 刷新消息队列
    */
   flushQueue() {
-    while (this.messageQueue.length > 0) {
+    const maxFlush = 50 // 防止队列过大
+    let count = 0
+    while (this.messageQueue.length > 0 && count < maxFlush) {
       const msg = this.messageQueue.shift()
       if (this.socket && this.state === STATE.CONNECTED) {
-        this.socket.send({ data: msg })
+        try {
+          this.socket.send({ data: msg })
+        } catch (e) {
+          this.messageQueue.unshift(msg)
+          break
+        }
       }
+      count++
     }
   }
 
@@ -172,6 +197,16 @@ class WsClient {
     this.stopHeartbeat()
     this.heartbeatTimer = setInterval(() => {
       if (this.state === STATE.CONNECTED) {
+        // 检查上次 pong 时间
+        const now = Date.now()
+        if (now - this._lastPong > this.heartbeatInterval * 2) {
+          // 超时，主动断开重连
+          console.log('心跳超时，重新连接')
+          this.disconnect()
+          this.isManualClose = false
+          this.scheduleReconnect()
+          return
+        }
         this.send({ type: 'ping' })
       }
     }, this.heartbeatInterval)
@@ -198,8 +233,12 @@ class WsClient {
     }
     if (this.reconnectTimer) return
 
-    const delay = this.reconnectDelay * Math.pow(1.5, this.reconnectAttempts)
-    console.log(`${delay}ms 后尝试第 ${this.reconnectAttempts + 1} 次重连`)
+    // 指数退避 + 抖动
+    const baseDelay = this.reconnectDelay * Math.pow(1.3, this.reconnectAttempts)
+    const jitter = Math.random() * 1000
+    const delay = Math.min(baseDelay + jitter, 30000)
+
+    console.log(`${Math.round(delay)}ms 后尝试第 ${this.reconnectAttempts + 1} 次重连`)
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null
       this.reconnectAttempts++
@@ -218,7 +257,9 @@ class WsClient {
       this.reconnectTimer = null
     }
     if (this.socket) {
-      this.socket.close({})
+      try {
+        this.socket.close({})
+      } catch (e) {}
       this.socket = null
     }
     this.state = STATE.DISCONNECTED
@@ -265,6 +306,18 @@ class WsClient {
    */
   isConnected() {
     return this.state === STATE.CONNECTED
+  }
+
+  /**
+   * 获取连接信息
+   */
+  getInfo() {
+    return {
+      state: this.state,
+      reconnectAttempts: this.reconnectAttempts,
+      queueLength: this.messageQueue.length,
+      lastPong: this._lastPong,
+    }
   }
 }
 

@@ -28,19 +28,28 @@ class MultiModalRefinement:
     async def refine_from_voice(self, agent_id: str, audio_path: str) -> dict:
         """从语音炼化数字人
         流程: 语音 -> 文字转录 -> 性格提取 -> 应用
+        如果转录服务不可用，直接分析音频特征
         """
         # 1. 语音转文字
         transcript = await self._transcribe_audio(audio_path)
-        if not transcript:
-            return {"success": False, "error": "语音转录失败"}
 
-        # 2. 从转录文本提取性格
+        # 2. 提取音色特征
+        voice_features = await self._extract_voice_features(audio_path)
+
+        if not transcript:
+            # 转录不可用，使用音频特征进行基本分析
+            logger.info("语音转录不可用，使用音频特征分析")
+            traits = {
+                "voice_features": voice_features,
+                "speaking_style": "根据音频特征分析",
+            }
+            await self._apply_traits(agent_id, traits)
+            return {"success": True, "traits": traits, "transcript": "", "source": "voice", "note": "语音转录服务未配置，已提取音色特征"}
+
+        # 3. 从转录文本提取性格
         prompt = self._build_extraction_prompt("voice_transcript", transcript)
         result = await self._call_llm(prompt)
         traits = self._parse_traits(result)
-
-        # 3. 提取音色特征（关联到语音音色管理）
-        voice_features = await self._extract_voice_features(audio_path)
         traits["voice_features"] = voice_features
 
         await self._apply_traits(agent_id, traits)
@@ -53,30 +62,41 @@ class MultiModalRefinement:
         # 1. 提取音频
         audio_path = await self._extract_audio_from_video(video_path)
         if not audio_path:
-            return {"success": False, "error": "视频音频提取失败"}
+            return {"success": False, "error": "视频音频提取失败（需要安装 ffmpeg）"}
 
-        # 2. 语音转文字
-        transcript = await self._transcribe_audio(audio_path)
-        if not transcript:
-            return {"success": False, "error": "语音转录失败"}
+        try:
+            # 2. 语音转文字
+            transcript = await self._transcribe_audio(audio_path)
 
-        # 3. 提取音色特征
-        voice_features = await self._extract_voice_features(audio_path)
+            # 3. 提取音色特征
+            voice_features = await self._extract_voice_features(audio_path)
 
-        # 4. 从转录文本提取性格
-        prompt = self._build_extraction_prompt("video_transcript", transcript)
-        result = await self._call_llm(prompt)
-        traits = self._parse_traits(result)
-        traits["voice_features"] = voice_features
+            if not transcript:
+                # 转录不可用，使用音频特征
+                logger.info("语音转录不可用，使用视频音频特征分析")
+                traits = {
+                    "voice_features": voice_features,
+                    "speaking_style": "根据视频音频特征分析",
+                }
+                await self._apply_traits(agent_id, traits)
+                return {"success": True, "traits": traits, "transcript": "",
+                        "voice_features": voice_features, "source": "video",
+                        "note": "语音转录服务未配置，已提取音色特征"}
 
-        await self._apply_traits(agent_id, traits)
+            # 4. 从转录文本提取性格
+            prompt = self._build_extraction_prompt("video_transcript", transcript)
+            result = await self._call_llm(prompt)
+            traits = self._parse_traits(result)
+            traits["voice_features"] = voice_features
 
-        # 5. 清理临时文件
-        if os.path.exists(audio_path):
-            os.remove(audio_path)
+            await self._apply_traits(agent_id, traits)
 
-        return {"success": True, "traits": traits, "transcript": transcript,
-                "voice_features": voice_features, "source": "video"}
+            return {"success": True, "traits": traits, "transcript": transcript,
+                    "voice_features": voice_features, "source": "video"}
+        finally:
+            # 5. 清理临时文件
+            if os.path.exists(audio_path):
+                os.remove(audio_path)
 
     async def refine_from_document(self, agent_id: str, doc_path: str,
                                      doc_type: str = "") -> dict:
@@ -165,6 +185,9 @@ class MultiModalRefinement:
             if result.returncode == 0 and os.path.exists(audio_path):
                 return audio_path
             logger.error(f"ffmpeg 提取音频失败: {result.stderr}")
+            return ""
+        except FileNotFoundError:
+            logger.error("ffmpeg 未安装，无法从视频提取音频")
             return ""
         except Exception as e:
             logger.error(f"视频音频提取失败: {e}")
@@ -399,8 +422,9 @@ class MultiModalRefinement:
             updates.append("backstory=?")
             params.append(traits["backstory"])
 
-        if traits.get("name") and not traits.get("personality_traits"):
-            # 如果只提取了名字，不更新名字（避免覆盖）
+        # 如果只提取了名字但没有其他特征，跳过更新
+        if traits.get("name") and not any([traits.get("personality_traits"), traits.get("speaking_style"), traits.get("interests")]):
+            logger.info(f"提取了名字但无性格特征: {traits.get('name')}")
 
         if not updates:
             logger.warning(f"没有可应用的性格特征: {agent_id}")

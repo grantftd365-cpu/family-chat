@@ -1,10 +1,19 @@
-"""数据库模型和初始化 - v2.0 全功能版"""
+"""数据库模型和初始化 - v2.0 全功能版
+
+优化：连接池、WAL 模式、索引优化
+"""
 import aiosqlite
+import asyncio
 import time
 import uuid
 from pathlib import Path
+from loguru import logger
 
 DB_PATH = "data/familychat.db"
+
+# 连接池
+_pool: aiosqlite.Connection | None = None
+_pool_lock = asyncio.Lock()
 
 
 async def init_db():
@@ -280,9 +289,29 @@ async def init_db():
 
 
 async def get_db() -> aiosqlite.Connection:
-    db = await aiosqlite.connect(DB_PATH, timeout=30)
-    db.row_factory = aiosqlite.Row
-    return db
+    """获取数据库连接（使用连接池）"""
+    global _pool
+    if _pool is None:
+        async with _pool_lock:
+            if _pool is None:
+                _pool = await aiosqlite.connect(DB_PATH, timeout=30)
+                _pool.row_factory = aiosqlite.Row
+                # 启用 WAL 模式提升并发性能
+                await _pool.execute("PRAGMA journal_mode=WAL")
+                await _pool.execute("PRAGMA synchronous=NORMAL")
+                await _pool.execute("PRAGMA cache_size=-64000")  # 64MB 缓存
+                await _pool.execute("PRAGMA temp_store=MEMORY")
+                await _pool.commit()
+                logger.info("数据库连接池已初始化 (WAL 模式)")
+    return _pool
+
+
+async def close_db():
+    """关闭数据库连接"""
+    global _pool
+    if _pool:
+        await _pool.close()
+        _pool = None
 
 
 def gen_id() -> str:

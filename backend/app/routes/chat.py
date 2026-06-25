@@ -34,6 +34,7 @@ class SendMessageReq(BaseModel):
     file_name: str = ""
     file_size: int = 0
     reply_to: str = ""
+    extra: str = "{}"
 
 
 class RecallReq(BaseModel):
@@ -270,6 +271,7 @@ async def get_messages(group_id: str, limit: int = 50, before: float = 0, user=D
                 "is_agent": bool(row[10]), "reply_to": row[11] or "",
                 "reply_content": row[12] or "", "forwarded_from": row[13] or "",
                 "recalled": bool(row[14]), "pinned": bool(row[15]),
+                "extra": row[16] or "{}",
                 "created_at": row[17],
             }
             if msg["recalled"]:
@@ -330,11 +332,11 @@ async def send_message(req: SendMessageReq, user=Depends(get_current_user)):
 
         await db.execute(
             """INSERT INTO messages (id,group_id,sender_id,sender_name,sender_avatar,content,msg_type,
-               media_url,file_name,file_size,is_agent,reply_to,reply_content,created_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               media_url,file_name,file_size,is_agent,reply_to,reply_content,extra,created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (msg_id, req.group_id, user["user_id"], nickname, avatar,
              req.content, req.msg_type, req.media_url, req.file_name, req.file_size,
-             0, req.reply_to, reply_content, ts)
+             0, req.reply_to, reply_content, req.extra, ts)
         )
         await db.commit()
 
@@ -347,8 +349,8 @@ async def send_message(req: SendMessageReq, user=Depends(get_current_user)):
                 "msg_type": req.msg_type, "media_url": req.media_url,
                 "file_name": req.file_name, "file_size": req.file_size,
                 "is_agent": False, "reply_to": req.reply_to,
-                "reply_content": reply_content, "created_at": ts,
-                "reactions": [],
+                "reply_content": reply_content, "extra": req.extra,
+                "created_at": ts, "reactions": [],
             }
         }
         await ws_manager.broadcast_to_group(req.group_id, msg_data, exclude_user=user["user_id"])
