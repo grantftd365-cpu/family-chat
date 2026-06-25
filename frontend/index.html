@@ -293,6 +293,59 @@ input,textarea,button { font-family:inherit; font-size:16px; }
 .toggle.on { background:var(--green); }
 .toggle::after { content:''; position:absolute; top:2px; left:2px; width:20px; height:20px; border-radius:50%; background:#fff; transition:transform .2s; }
 .toggle.on::after { transform:translateX(20px); }
+
+/* ===== Digital Human Page ===== */
+.dh-header { background:linear-gradient(135deg,#667eea,#764ba2); padding:40px 20px 24px; text-align:center; color:#fff; }
+.dh-header h2 { font-size:20px; margin-bottom:6px; }
+.dh-header p { font-size:13px; opacity:.8; }
+.dh-card { background:var(--card); border-radius:12px; margin:12px 16px; padding:16px; box-shadow:var(--shadow); }
+.dh-card-header { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
+.dh-card-av { width:56px; height:56px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:32px; background:var(--bg); }
+.dh-card-info h3 { font-size:17px; font-weight:600; }
+.dh-card-info p { font-size:13px; color:var(--text-sub); margin-top:2px; }
+.dh-tags { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+.dh-tag { font-size:12px; background:rgba(7,193,96,.1); color:var(--green); padding:3px 8px; border-radius:10px; }
+.dh-actions { display:flex; gap:8px; margin-top:12px; }
+.dh-actions button { flex:1; padding:10px; border:none; border-radius:8px; font-size:14px; cursor:pointer; }
+.dh-btn-primary { background:var(--green); color:#fff; }
+.dh-btn-secondary { background:var(--bg); color:var(--text); }
+.dh-empty { text-align:center; padding:40px 20px; color:var(--text-sub); }
+.dh-empty .icon { font-size:48px; margin-bottom:12px; }
+
+/* ===== Refine Upload ===== */
+.refine-tabs { display:flex; border-bottom:1px solid var(--border); margin-bottom:16px; }
+.refine-tab { flex:1; padding:10px; text-align:center; font-size:14px; cursor:pointer; border:none; background:none; color:var(--text-sub); border-bottom:2px solid transparent; }
+.refine-tab.active { color:var(--green); border-bottom-color:var(--green); }
+.refine-panel { display:none; }
+.refine-panel.active { display:block; }
+.upload-zone { border:2px dashed var(--border); border-radius:8px; padding:24px; text-align:center; color:var(--text-sub); cursor:pointer; transition:all .2s; }
+.upload-zone:hover { border-color:var(--green); color:var(--green); }
+.upload-zone.dragover { border-color:var(--green); background:rgba(7,193,96,.05); }
+.upload-zone .icon { font-size:32px; margin-bottom:8px; }
+.upload-preview { margin-top:12px; padding:8px 12px; background:var(--bg); border-radius:6px; font-size:13px; display:none; align-items:center; gap:8px; }
+.upload-preview.show { display:flex; }
+.upload-preview .name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.upload-preview .remove { color:var(--danger); cursor:pointer; font-size:16px; }
+
+/* ===== Voice Profile ===== */
+.vp-list { padding:12px 16px; }
+.vp-item { background:var(--card); border-radius:8px; padding:14px; margin-bottom:10px; display:flex; align-items:center; gap:12px; }
+.vp-icon { width:44px; height:44px; border-radius:50%; background:linear-gradient(135deg,#667eea,#764ba2); display:flex; align-items:center; justify-content:center; font-size:20px; color:#fff; }
+.vp-info { flex:1; }
+.vp-info .name { font-size:15px; font-weight:500; }
+.vp-info .desc { font-size:12px; color:var(--text-sub); margin-top:2px; }
+.vp-actions { display:flex; gap:8px; }
+.vp-actions button { padding:6px 12px; border:none; border-radius:4px; font-size:12px; cursor:pointer; }
+.voice-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; margin:12px 0; }
+.voice-option { padding:12px; border:1px solid var(--border); border-radius:8px; text-align:center; cursor:pointer; transition:all .2s; }
+.voice-option:hover { border-color:var(--green); }
+.voice-option.selected { border-color:var(--green); background:rgba(7,193,96,.08); }
+.voice-option .emoji { font-size:24px; }
+.voice-option .name { font-size:13px; margin-top:4px; }
+.voice-option .desc { font-size:11px; color:var(--text-sub); }
+
+/* ===== Agent Voice Indicator ===== */
+.msg-voice-indicator { display:flex; align-items:center; gap:4px; font-size:11px; color:var(--green); margin-top:2px; }
 </style>
 </head>
 <body>
@@ -408,8 +461,16 @@ input,textarea,button { font-family:inherit; font-size:16px; }
       <span class="label">⭐ 我的收藏</span>
       <span class="arrow" style="color:var(--text-light)">›</span>
     </div>
-    <div class="settings-row" onclick="showModal('refineModal')" style="cursor:pointer">
+    <div class="settings-row" onclick="showPage('digitalHumanPage');loadDigitalHumans()" style="cursor:pointer">
+      <span class="label">🤖 我的数字人</span>
+      <span class="arrow" style="color:var(--text-light)">›</span>
+    </div>
+    <div class="settings-row" onclick="showModal('refineEnhancedModal');loadRefineAgents()" style="cursor:pointer">
       <span class="label">🧪 炼化数字人</span>
+      <span class="arrow" style="color:var(--text-light)">›</span>
+    </div>
+    <div class="settings-row" onclick="showPage('voiceProfilePage');loadVoiceProfiles()" style="cursor:pointer">
+      <span class="label">🎤 语音音色</span>
       <span class="arrow" style="color:var(--text-light)">›</span>
     </div>
     <div class="settings-row" onclick="showModal('editProfileModal')" style="cursor:pointer">
@@ -426,13 +487,33 @@ input,textarea,button { font-family:inherit; font-size:16px; }
     </div>
     <div class="settings-row">
       <span class="label">版本</span>
-      <span class="desc">v2.0.0</span>
+      <span class="desc">v3.0.0</span>
     </div>
     <button class="logout-btn" onclick="doLogout()" style="margin-top:40px">退出登录</button>
   </div>
 </div>
 
 </div><!-- end #app -->
+
+<!-- ===== Digital Human Page ===== -->
+<div id="digitalHumanPage" class="page">
+  <div class="header">
+    <button class="back" onclick="goBack()">‹</button>
+    <div class="header-title">我的数字人</div>
+    <button class="action" onclick="showModal('createAgentModal')">＋</button>
+  </div>
+  <div id="digitalHumanList" style="flex:1;overflow-y:auto;"></div>
+</div>
+
+<!-- ===== Voice Profile Page ===== -->
+<div id="voiceProfilePage" class="page">
+  <div class="header">
+    <button class="back" onclick="goBack()">‹</button>
+    <div class="header-title">语音音色</div>
+    <button class="action" onclick="showModal('createVoiceModal')">＋</button>
+  </div>
+  <div id="voiceProfileList" style="flex:1;overflow-y:auto;"></div>
+</div>
 
 <!-- ===== Modals ===== -->
 
@@ -558,6 +639,124 @@ input,textarea,button { font-family:inherit; font-size:16px; }
     <h3>📊 系统统计</h3>
     <div id="statsContent"></div>
     <button class="modal-btn modal-btn-cancel" style="margin-top:16px" onclick="closeModal($('statsModal'))">关闭</button>
+  </div>
+</div>
+
+<!-- Create Agent -->
+<div id="createAgentModal" class="modal-bg" onclick="if(event.target===this)closeModal(this)">
+  <div class="modal-box">
+    <h3>🤖 创建数字人</h3>
+    <input id="agentName" placeholder="数字人名称（如：老爸、老妈）">
+    <select id="agentAvatar" style="width:100%;padding:12px;border:0.5px solid var(--border);border-radius:6px;font-size:16px;margin-bottom:12px;background:var(--card);color:var(--text);">
+      <option value="👨">👨 爸爸</option>
+      <option value="👩">👩 妈妈</option>
+      <option value="👦">👦 儿子</option>
+      <option value="👧">👧 女儿</option>
+      <option value="👴">👴 爷爷</option>
+      <option value="👵">👵 奶奶</option>
+      <option value="🤖">🤖 管家</option>
+      <option value="🧑">🧑 通用</option>
+    </select>
+    <input id="agentRole" placeholder="家庭角色（爸爸/妈妈/儿子...）">
+    <textarea id="agentBackstory" rows="3" placeholder="背景故事（可选）"></textarea>
+    <textarea id="agentStyle" rows="2" placeholder="说话风格（如：温柔、幽默、严肃）"></textarea>
+    <button class="modal-btn modal-btn-ok" onclick="doCreateAgent()">创建</button>
+    <button class="modal-btn modal-btn-cancel" onclick="closeModal($('createAgentModal'))">取消</button>
+  </div>
+</div>
+
+<!-- Agent Detail -->
+<div id="agentDetailModal" class="modal-bg" onclick="if(event.target===this)closeModal(this)">
+  <div class="modal-box" id="agentDetailContent"></div>
+</div>
+
+<!-- Refine Enhanced -->
+<div id="refineEnhancedModal" class="modal-bg" onclick="if(event.target===this)closeModal(this)">
+  <div class="modal-box" style="max-height:90vh;overflow-y:auto">
+    <h3>🧪 炼化数字人</h3>
+    <select id="refineAgentSelect2" style="width:100%;padding:12px;border:0.5px solid var(--border);border-radius:6px;font-size:16px;margin-bottom:12px;background:var(--card);color:var(--text);"></select>
+    <div class="refine-tabs">
+      <button class="refine-tab active" onclick="switchRefineTab('text',this)">📝 文本</button>
+      <button class="refine-tab" onclick="switchRefineTab('voice',this)">🎤 语音</button>
+      <button class="refine-tab" onclick="switchRefineTab('video',this)">🎬 视频</button>
+      <button class="refine-tab" onclick="switchRefineTab('doc',this)">📄 文档</button>
+    </div>
+    <div id="refinePanelText" class="refine-panel active">
+      <textarea id="refineTextEnhanced" rows="5" placeholder="粘贴聊天记录、自我介绍或性格描述..."></textarea>
+    </div>
+    <div id="refinePanelVoice" class="refine-panel">
+      <div class="upload-zone" onclick="$('refineVoiceInput').click()" ondragover="event.preventDefault();this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="handleRefineDrop(event,'voice')">
+        <div class="icon">🎤</div>
+        <div>点击上传或拖拽音频文件</div>
+        <div style="font-size:12px;margin-top:4px">支持 mp3, wav, m4a 等</div>
+      </div>
+      <input type="file" id="refineVoiceInput" accept="audio/*" style="display:none" onchange="showRefinePreview(this,'voice')">
+      <div id="refineVoicePreview" class="upload-preview"><span class="name"></span><span class="remove" onclick="clearRefineFile('voice')">✕</span></div>
+    </div>
+    <div id="refinePanelVideo" class="refine-panel">
+      <div class="upload-zone" onclick="$('refineVideoInput').click()" ondragover="event.preventDefault();this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="handleRefineDrop(event,'video')">
+        <div class="icon">🎬</div>
+        <div>点击上传或拖拽视频文件</div>
+        <div style="font-size:12px;margin-top:4px">支持 mp4, mov, avi 等</div>
+      </div>
+      <input type="file" id="refineVideoInput" accept="video/*" style="display:none" onchange="showRefinePreview(this,'voice')">
+      <div id="refineVideoPreview" class="upload-preview"><span class="name"></span><span class="remove" onclick="clearRefineFile('video')">✕</span></div>
+    </div>
+    <div id="refinePanelDoc" class="refine-panel">
+      <div class="upload-zone" onclick="$('refineDocInput').click()" ondragover="event.preventDefault();this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="handleRefineDrop(event,'doc')">
+        <div class="icon">📄</div>
+        <div>点击上传或拖拽文档</div>
+        <div style="font-size:12px;margin-top:4px">支持 txt, pdf, docx, xlsx, md, json</div>
+      </div>
+      <input type="file" id="refineDocInput" accept=".txt,.pdf,.docx,.doc,.xlsx,.xls,.md,.json" style="display:none" onchange="showRefinePreview(this,'doc')">
+      <div id="refineDocPreview" class="upload-preview"><span class="name"></span><span class="remove" onclick="clearRefineFile('doc')">✕</span></div>
+    </div>
+    <div id="refineResult" style="margin-top:12px;padding:12px;background:var(--bg);border-radius:6px;font-size:13px;display:none"></div>
+    <button class="modal-btn modal-btn-ok" onclick="doRefineEnhanced()" id="refineBtn">开始炼化</button>
+    <button class="modal-btn modal-btn-cancel" onclick="closeModal($('refineEnhancedModal'))">取消</button>
+  </div>
+</div>
+
+<!-- Create Voice Profile -->
+<div id="createVoiceModal" class="modal-bg" onclick="if(event.target===this)closeModal(this)">
+  <div class="modal-box" style="max-height:85vh;overflow-y:auto">
+    <h3>🎤 创建语音音色</h3>
+    <div class="refine-tabs">
+      <button class="refine-tab active" onclick="switchVoiceTab('preset',this)">🎵 预设音色</button>
+      <button class="refine-tab" onclick="switchVoiceTab('upload',this)">📤 上传克隆</button>
+    </div>
+    <div id="voicePanelPreset" class="refine-panel active">
+      <input id="voicePresetName" placeholder="音色名称" style="margin-bottom:12px">
+      <div id="voiceGrid" class="voice-grid"></div>
+    </div>
+    <div id="voicePanelUpload" class="refine-panel">
+      <input id="voiceUploadName" placeholder="音色名称" style="margin-bottom:12px">
+      <div class="upload-zone" onclick="$('voiceUploadInput').click()">
+        <div class="icon">📤</div>
+        <div>上传音频文件克隆音色</div>
+        <div style="font-size:12px;margin-top:4px">系统会自动分析音色特征并匹配最接近的声音</div>
+      </div>
+      <input type="file" id="voiceUploadInput" accept="audio/*,video/*" style="display:none" onchange="showVoiceUploadPreview(this)">
+      <div id="voiceUploadPreview" class="upload-preview"><span class="name"></span><span class="remove" onclick="clearVoiceUpload()">✕</span></div>
+      <select id="voiceUploadGender" style="width:100%;padding:10px;border:0.5px solid var(--border);border-radius:6px;font-size:14px;margin-top:8px;background:var(--card);color:var(--text);">
+        <option value="">性别（可选，帮助匹配）</option>
+        <option value="male">男</option>
+        <option value="female">女</option>
+      </select>
+    </div>
+    <button class="modal-btn modal-btn-ok" onclick="doCreateVoice()">创建</button>
+    <button class="modal-btn modal-btn-cancel" onclick="closeModal($('createVoiceModal'))">取消</button>
+  </div>
+</div>
+
+<!-- Assign Voice -->
+<div id="assignVoiceModal" class="modal-bg" onclick="if(event.target===this)closeModal(this)">
+  <div class="modal-box">
+    <h3>🔗 分配音色给数字人</h3>
+    <select id="assignVoiceAgent" style="width:100%;padding:12px;border:0.5px solid var(--border);border-radius:6px;font-size:16px;margin-bottom:12px;background:var(--card);color:var(--text);"></select>
+    <select id="assignVoiceProfile" style="width:100%;padding:12px;border:0.5px solid var(--border);border-radius:6px;font-size:16px;margin-bottom:12px;background:var(--card);color:var(--text);"></select>
+    <button class="modal-btn modal-btn-ok" onclick="doAssignVoice()">分配</button>
+    <button class="modal-btn modal-btn-cancel" onclick="closeModal($('assignVoiceModal'))">取消</button>
   </div>
 </div>
 
@@ -782,7 +981,9 @@ function renderProfile() {
     </div>
     <div class="profile-section">
       <div class="profile-row" onclick="loadMoments();showPage('momentsPage')"><span class="icon">📷</span><span class="label">朋友圈</span><span class="arrow">›</span></div>
-      <div class="profile-row" onclick="showModal('refineModal')"><span class="icon">🧪</span><span class="label">炼化数字人</span><span class="arrow">›</span></div>
+      <div class="profile-row" onclick="showPage('digitalHumanPage');loadDigitalHumans()"><span class="icon">🤖</span><span class="label">我的数字人</span><span class="arrow">›</span></div>
+      <div class="profile-row" onclick="showModal('refineEnhancedModal');loadRefineAgents()"><span class="icon">🧪</span><span class="label">炼化数字人</span><span class="arrow">›</span></div>
+      <div class="profile-row" onclick="showPage('voiceProfilePage');loadVoiceProfiles()"><span class="icon">🎤</span><span class="label">语音音色</span><span class="arrow">›</span></div>
       <div class="profile-row" onclick="loadFavorites();showPage('favoritesPage')"><span class="icon">⭐</span><span class="label">收藏</span><span class="arrow">›</span></div>
       <div class="profile-row" onclick="showPage('settingsPage')"><span class="icon">⚙️</span><span class="label">设置</span><span class="arrow">›</span></div>
     </div>`;
@@ -798,8 +999,36 @@ async function loadAgents() {
   }
 }
 function showAgentDetail(id) {
-  // TODO: agent detail page
-  toast('数字人详情');
+  const agent = S.agents.find(a => a.id === id);
+  if (!agent) return toast('数字人不存在');
+  const el = $('agentDetailContent');
+  el.innerHTML = `
+    <h3>${agent.avatar||'🤖'} ${esc(agent.name)}</h3>
+    <div style="text-align:center;margin:16px 0">
+      <div style="font-size:64px">${agent.avatar||'🤖'}</div>
+    </div>
+    <div style="margin-bottom:12px">
+      <div style="font-size:13px;color:var(--text-sub);margin-bottom:4px">性格特质</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${(agent.traits||[]).map(t=>`<span class="dh-tag">${esc(t)}</span>`).join('') || '<span style="color:var(--text-sub);font-size:13px">待炼化</span>'}
+      </div>
+    </div>
+    <div style="margin-bottom:12px">
+      <div style="font-size:13px;color:var(--text-sub);margin-bottom:4px">说话风格</div>
+      <div style="font-size:14px">${esc(agent.speaking_style||'待设置')}</div>
+    </div>
+    <div style="margin-bottom:12px">
+      <div style="font-size:13px;color:var(--text-sub);margin-bottom:4px">兴趣爱好</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${(agent.interests||[]).map(i=>`<span class="dh-tag">${esc(i)}</span>`).join('') || '<span style="color:var(--text-sub);font-size:13px">待设置</span>'}
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="modal-btn" style="flex:1;background:var(--green);color:#fff" onclick="closeModal($('agentDetailModal'));showModal('refineEnhancedModal');loadRefineAgents();$('refineAgentSelect2').value='${id}'">🧪 炼化</button>
+      <button class="modal-btn" style="flex:1;background:var(--bg);color:var(--text)" onclick="closeModal($('agentDetailModal'))">关闭</button>
+    </div>
+  `;
+  showModal('agentDetailModal');
 }
 async function doRefine() {
   const text = $('refineText').value.trim();
@@ -1325,6 +1554,326 @@ function connectWS() {
     } catch(err) {}
   };
   ws.onclose = () => setTimeout(connectWS, 3000);
+}
+
+// ==================== Digital Human Management ====================
+async function loadDigitalHumans() {
+  const el = $('digitalHumanList');
+  el.innerHTML = '<div class="empty"><span class="icon">⏳</span><p>加载中...</p></div>';
+  try {
+    const agents = await api('/api/agents');
+    S.agents = agents;
+    if (!agents.length) {
+      el.innerHTML = `<div class="dh-empty"><div class="icon">🤖</div><p>还没有数字人</p><p style="font-size:13px;margin-top:8px">创建一个属于你的数字人替身吧！</p><button class="modal-btn modal-btn-ok" style="margin-top:16px;max-width:200px" onclick="showModal('createAgentModal')">创建数字人</button></div>`;
+      return;
+    }
+    let html = '<div class="dh-header"><h2>我的数字人</h2><p>每个家庭成员都可以有自己的数字人替身</p></div>';
+    for (const a of agents) {
+      const traits = (a.traits||[]).slice(0,3).map(t=>`<span class="dh-tag">${esc(t)}</span>`).join('');
+      const voiceInfo = a.voice_config ? '<span class="dh-tag">🔊 有音色</span>' : '';
+      html += `
+        <div class="dh-card">
+          <div class="dh-card-header">
+            <div class="dh-card-av">${a.avatar||'🤖'}</div>
+            <div class="dh-card-info">
+              <h3>${esc(a.name)}</h3>
+              <p>${esc(a.identity?.role_in_family||a.speaking_style||'数字人')}</p>
+            </div>
+          </div>
+          <div class="dh-tags">${traits}${voiceInfo}</div>
+          <div class="dh-actions">
+            <button class="dh-btn-primary" onclick="showAgentDetail('${a.id}')">查看详情</button>
+            <button class="dh-btn-secondary" onclick="$('refineAgentSelect2').value='${a.id}';showModal('refineEnhancedModal');loadRefineAgents()">炼化</button>
+          </div>
+        </div>`;
+    }
+    el.innerHTML = html;
+  } catch(e) {
+    el.innerHTML = '<div class="empty"><span class="icon">❌</span><p>加载失败</p></div>';
+  }
+}
+
+async function doCreateAgent() {
+  const name = $('agentName').value.trim();
+  if (!name) return toast('请输入数字人名称');
+  const avatar = $('agentAvatar').value;
+  const role = $('agentRole').value.trim();
+  const backstory = $('agentBackstory').value.trim();
+  const style = $('agentStyle').value.trim();
+  try {
+    await api('/api/agents', {method:'POST', body:JSON.stringify({
+      name, avatar, role_in_family:role, backstory, speaking_style:style
+    })});
+    closeModal($('createAgentModal'));
+    $('agentName').value=''; $('agentRole').value=''; $('agentBackstory').value=''; $('agentStyle').value='';
+    toast('数字人创建成功！');
+    await loadAgents();
+    loadDigitalHumans();
+  } catch(e) { toast(e.message); }
+}
+
+// ==================== Enhanced Refinement ====================
+function loadRefineAgents() {
+  const sel = $('refineAgentSelect2');
+  if (sel) sel.innerHTML = S.agents.map(a => `<option value="${a.id}">${a.avatar||'🤖'} ${a.name}</option>`).join('');
+}
+
+function switchRefineTab(tab, btn) {
+  document.querySelectorAll('.refine-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.refine-panel').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  $('refinePanel' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.add('active');
+}
+
+function showRefinePreview(input, type) {
+  const file = input.files[0];
+  if (!file) return;
+  const preview = $(type === 'voice' ? 'refineVoicePreview' : type === 'video' ? 'refineVideoPreview' : 'refineDocPreview');
+  preview.querySelector('.name').textContent = file.name;
+  preview.classList.add('show');
+}
+
+function clearRefineFile(type) {
+  const input = $(type === 'voice' ? 'refineVoiceInput' : type === 'video' ? 'refineVideoInput' : 'refineDocInput');
+  const preview = $(type === 'voice' ? 'refineVoicePreview' : type === 'video' ? 'refineVideoPreview' : 'refineDocPreview');
+  input.value = '';
+  preview.classList.remove('show');
+}
+
+function handleRefineDrop(e, type) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  const input = $(type === 'voice' ? 'refineVoiceInput' : type === 'video' ? 'refineVideoInput' : 'refineDocInput');
+  const dt = new DataTransfer();
+  dt.items.add(file);
+  input.files = dt.files;
+  showRefinePreview(input, type);
+}
+
+async function doRefineEnhanced() {
+  const agentId = $('refineAgentSelect2').value;
+  if (!agentId) return toast('请选择数字人');
+  const btn = $('refineBtn');
+  const result = $('refineResult');
+  btn.disabled = true;
+  btn.textContent = '炼化中...';
+  result.style.display = 'none';
+
+  try {
+    // Determine active tab
+    const activeTab = document.querySelector('.refine-tab.active').textContent;
+    let resp;
+
+    if (activeTab.includes('文本')) {
+      const text = $('refineTextEnhanced').value.trim();
+      if (!text) return toast('请输入内容');
+      resp = await api('/api/agents/refine/text', {method:'POST', body:JSON.stringify({agent_id:agentId, text, source:'text'})});
+    } else if (activeTab.includes('语音')) {
+      const file = $('refineVoiceInput').files[0];
+      if (!file) return toast('请上传音频文件');
+      const form = new FormData();
+      form.append('agent_id', agentId);
+      form.append('file', file);
+      resp = await fetch('/api/agents/refine/voice', {method:'POST', headers:{'Authorization':'Bearer '+S.token}, body:form}).then(r=>r.json());
+    } else if (activeTab.includes('视频')) {
+      const file = $('refineVideoInput').files[0];
+      if (!file) return toast('请上传视频文件');
+      const form = new FormData();
+      form.append('agent_id', agentId);
+      form.append('file', file);
+      resp = await fetch('/api/agents/refine/video', {method:'POST', headers:{'Authorization':'Bearer '+S.token}, body:form}).then(r=>r.json());
+    } else if (activeTab.includes('文档')) {
+      const file = $('refineDocInput').files[0];
+      if (!file) return toast('请上传文档');
+      const form = new FormData();
+      form.append('agent_id', agentId);
+      form.append('file', file);
+      resp = await fetch('/api/agents/refine/document', {method:'POST', headers:{'Authorization':'Bearer '+S.token}, body:form}).then(r=>r.json());
+    }
+
+    if (resp && resp.success) {
+      const traits = resp.traits || {};
+      let html = '<div style="font-weight:600;margin-bottom:8px">✅ 炼化完成！</div>';
+      if (traits.personality_traits) html += `<div>性格: ${traits.personality_traits.join('、')}</div>`;
+      if (traits.speaking_style) html += `<div>说话风格: ${traits.speaking_style}</div>`;
+      if (traits.interests) html += `<div>兴趣: ${traits.interests.join('、')}</div>`;
+      if (traits.catchphrases) html += `<div>口头禅: ${traits.catchphrases.join('、')}</div>`;
+      if (resp.transcript) html += `<div style="margin-top:8px;font-size:12px;color:var(--text-sub)">转录: ${resp.transcript.substring(0,100)}...</div>`;
+      result.innerHTML = html;
+      result.style.display = 'block';
+      toast('炼化完成！');
+      await loadAgents();
+    } else {
+      toast(resp?.error || '炼化失败');
+    }
+  } catch(e) {
+    toast('炼化失败: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '开始炼化';
+  }
+}
+
+// ==================== Voice Profile Management ====================
+let selectedVoiceId = '';
+
+async function loadVoiceProfiles() {
+  const el = $('voiceProfileList');
+  el.innerHTML = '<div class="empty"><span class="icon">⏳</span><p>加载中...</p></div>';
+  try {
+    const resp = await api('/api/voice-profiles');
+    const profiles = resp.profiles || [];
+    if (!profiles.length) {
+      el.innerHTML = `<div class="dh-empty"><div class="icon">🎤</div><p>还没有语音音色</p><p style="font-size:13px;margin-top:8px">创建音色后，数字人就能用语音说话了！</p><button class="modal-btn modal-btn-ok" style="margin-top:16px;max-width:200px" onclick="showModal('createVoiceModal');loadVoiceGrid()">创建音色</button></div>`;
+      return;
+    }
+    let html = '<div class="dh-header" style="background:linear-gradient(135deg,#f093fb,#f5576c)"><h2>语音音色</h2><p>为每个数字人配置专属声音</p></div>';
+    html += '<div class="vp-list">';
+    for (const p of profiles) {
+      html += `
+        <div class="vp-item">
+          <div class="vp-icon">🎵</div>
+          <div class="vp-info">
+            <div class="name">${esc(p.name)}</div>
+            <div class="desc">${esc(p.edge_voice_name||p.edge_voice_id)} · ${p.gender==='female'?'女声':p.gender==='male'?'男声':'未知'}</div>
+          </div>
+          <div class="vp-actions">
+            <button style="background:var(--green);color:#fff" onclick="previewVoice('${p.edge_voice_id}')">试听</button>
+            <button style="background:var(--danger);color:#fff" onclick="deleteVoiceProfile('${p.id}')">删除</button>
+          </div>
+        </div>`;
+    }
+    html += '</div>';
+    html += `<div style="padding:12px 16px;display:flex;gap:8px"><button class="modal-btn modal-btn-ok" style="flex:1" onclick="showModal('assignVoiceModal');loadAssignVoiceOptions()">🔗 分配给数字人</button></div>`;
+    el.innerHTML = html;
+  } catch(e) {
+    el.innerHTML = '<div class="empty"><span class="icon">❌</span><p>加载失败</p></div>';
+  }
+}
+
+function loadVoiceGrid() {
+  const grid = $('voiceGrid');
+  if (!grid) return;
+  const voices = [
+    {id:'zh-CN-XiaoxiaoNeural',emoji:'👩',name:'晓晓',desc:'温柔女声'},
+    {id:'zh-CN-YunxiNeural',emoji:'👨',name:'云希',desc:'稳重男声'},
+    {id:'zh-CN-XiaoyiNeural',emoji:'👩',name:'晓艺',desc:'年长女声'},
+    {id:'zh-CN-YunjianNeural',emoji:'👨',name:'云健',desc:'活力男声'},
+    {id:'zh-CN-XiaochenNeural',emoji:'👩',name:'晓辰',desc:'甜美女声'},
+    {id:'zh-CN-XiaomoNeural',emoji:'👩',name:'晓墨',desc:'知性女声'},
+    {id:'zh-CN-YunyangNeural',emoji:'👨',name:'云扬',desc:'新闻男声'},
+    {id:'zh-CN-XiaoxuanNeural',emoji:'👩',name:'晓萱',desc:'活力女声'},
+    {id:'zh-CN-XiaohanNeural',emoji:'👩',name:'晓涵',desc:'温暖女声'},
+    {id:'zh-CN-YunfengNeural',emoji:'👨',name:'云枫',desc:'磁性男声'},
+    {id:'zh-CN-XiaomengNeural',emoji:'👩',name:'晓梦',desc:'萌系女声'},
+    {id:'zh-CN-YunzeNeural',emoji:'👨',name:'云泽',desc:'成熟男声'},
+  ];
+  grid.innerHTML = voices.map(v => `
+    <div class="voice-option" data-id="${v.id}" onclick="selectVoice(this,'${v.id}')">
+      <div class="emoji">${v.emoji}</div>
+      <div class="name">${v.name}</div>
+      <div class="desc">${v.desc}</div>
+    </div>
+  `).join('');
+}
+
+function selectVoice(el, id) {
+  document.querySelectorAll('.voice-option').forEach(o => o.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedVoiceId = id;
+}
+
+function switchVoiceTab(tab, btn) {
+  document.querySelectorAll('#createVoiceModal .refine-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('#createVoiceModal .refine-panel').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  $(tab === 'preset' ? 'voicePanelPreset' : 'voicePanelUpload').classList.add('active');
+}
+
+function showVoiceUploadPreview(input) {
+  const file = input.files[0];
+  if (!file) return;
+  $('voiceUploadPreview').querySelector('.name').textContent = file.name;
+  $('voiceUploadPreview').classList.add('show');
+}
+
+function clearVoiceUpload() {
+  $('voiceUploadInput').value = '';
+  $('voiceUploadPreview').classList.remove('show');
+}
+
+async function doCreateVoice() {
+  const activeTab = document.querySelector('#createVoiceModal .refine-tab.active').textContent;
+  try {
+    if (activeTab.includes('预设')) {
+      const name = $('voicePresetName').value.trim();
+      if (!name) return toast('请输入音色名称');
+      if (!selectedVoiceId) return toast('请选择一个音色');
+      await api('/api/voice-profiles', {method:'POST', body:JSON.stringify({name, edge_voice_id:selectedVoiceId})});
+    } else {
+      const name = $('voiceUploadName').value.trim();
+      if (!name) return toast('请输入音色名称');
+      const file = $('voiceUploadInput').files[0];
+      if (!file) return toast('请上传音频文件');
+      const form = new FormData();
+      form.append('name', name);
+      form.append('file', file);
+      const gender = $('voiceUploadGender').value;
+      if (gender) form.append('gender', gender);
+      await fetch('/api/voice-profiles/upload', {method:'POST', headers:{'Authorization':'Bearer '+S.token}, body:form}).then(r=>r.json());
+    }
+    closeModal($('createVoiceModal'));
+    toast('音色创建成功！');
+    loadVoiceProfiles();
+  } catch(e) { toast(e.message); }
+}
+
+async function previewVoice(voiceId) {
+  try {
+    const form = new FormData();
+    form.append('text', '你好，我是你的家庭数字人，很高兴认识你！');
+    form.append('edge_voice_id', voiceId);
+    const resp = await fetch('/api/voice-profiles/synthesize', {method:'POST', headers:{'Authorization':'Bearer '+S.token}, body:form});
+    if (resp.ok) {
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.play();
+      audio.onended = () => URL.revokeObjectURL(url);
+    } else {
+      toast('试听失败');
+    }
+  } catch(e) { toast('试听失败: ' + e.message); }
+}
+
+async function deleteVoiceProfile(id) {
+  if (!confirm('确定删除这个音色？')) return;
+  try {
+    await api(`/api/voice-profiles/${id}`, {method:'DELETE'});
+    toast('已删除');
+    loadVoiceProfiles();
+  } catch(e) { toast(e.message); }
+}
+
+function loadAssignVoiceOptions() {
+  $('assignVoiceAgent').innerHTML = S.agents.map(a => `<option value="${a.id}">${a.avatar||'🤖'} ${a.name}</option>`).join('');
+  api('/api/voice-profiles').then(resp => {
+    $('assignVoiceProfile').innerHTML = (resp.profiles||[]).map(p => `<option value="${p.id}">${p.name} (${p.edge_voice_name||''})</option>`).join('');
+  });
+}
+
+async function doAssignVoice() {
+  const agentId = $('assignVoiceAgent').value;
+  const profileId = $('assignVoiceProfile').value;
+  if (!agentId || !profileId) return toast('请选择数字人和音色');
+  try {
+    await api('/api/voice-profiles/assign', {method:'POST', body:JSON.stringify({agent_id:agentId, profile_id:profileId})});
+    closeModal($('assignVoiceModal'));
+    toast('音色分配成功！数字人现在可以用语音说话了');
+    await loadAgents();
+  } catch(e) { toast(e.message); }
 }
 
 // ==================== Utils ====================
