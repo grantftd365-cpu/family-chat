@@ -1,5 +1,6 @@
 """聊天路由 - 消息/群组/私聊"""
 import asyncio
+import os
 import random
 import json
 from pathlib import Path
@@ -352,16 +353,70 @@ async def send_message(req: SendMessageReq, user=Depends(get_current_user)):
         }
         await ws_manager.broadcast_to_group(req.group_id, msg_data, exclude_user=user["user_id"])
 
-        # 触发 Agent 回复
+        # 触发 Agent 回复（支持语音）
         asyncio.create_task(
-            agent_manager.handle_group_message(
-                req.group_id, user["user_id"], nickname, req.content, req.msg_type
-            )
+            _handle_agent_replies(req.group_id, user["user_id"], nickname, req.content, req.msg_type)
         )
 
         return {"id": msg_id, "created_at": ts}
     finally:
         await db.close()
+
+
+async def _handle_agent_replies(group_id: str, sender_id: str, sender_name: str,
+                                content: str, msg_type: str):
+    """处理 Agent 回复，支持语音合成"""
+    from ..main import agent_manager, voice_profile_manager
+    try:
+        replies = await agent_manager.handle_group_message(
+            group_id, sender_id, sender_name, content, msg_type
+        )
+        for reply in replies:
+            db = await get_db()
+            try:
+                msg_id = gen_id()
+                ts = now()
+
+                # 尝试生成语音
+                voice_url = ""
+                if voice_profile_manager:
+                    try:
+                        voice = await voice_profile_manager.get_agent_voice(reply["agent_id"])
+                        if voice:
+                            tts_path = await voice_profile_manager.synthesize(
+                                reply["content"], profile_id=voice["id"]
+                            )
+                            if tts_path:
+                                voice_url = f"/api/voice/{os.path.basename(tts_path)}"
+                    except Exception as ve:
+                        logger.debug(f"语音合成跳过: {ve}")
+
+                reply_msg_type = "voice" if voice_url else "text"
+                await db.execute(
+                    """INSERT INTO messages (id,group_id,sender_id,sender_name,sender_avatar,content,msg_type,
+                       media_url,is_agent,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                    (msg_id, group_id, reply["agent_id"], reply["agent_name"],
+                     reply.get("agent_avatar", "🤖"), reply["content"],
+                     reply_msg_type, voice_url, 1, ts)
+                )
+                await db.commit()
+
+                ws_data = {
+                    "type": "message",
+                    "data": {
+                        "id": msg_id, "group_id": group_id,
+                        "sender_id": reply["agent_id"], "sender_name": reply["agent_name"],
+                        "sender_avatar": reply.get("agent_avatar", "🤖"),
+                        "content": reply["content"], "msg_type": reply_msg_type,
+                        "media_url": voice_url, "is_agent": True,
+                        "created_at": ts, "reactions": [],
+                    }
+                }
+                await ws_manager.broadcast_to_group(group_id, ws_data)
+            finally:
+                await db.close()
+    except Exception as e:
+        logger.error(f"Agent 回复处理失败: {e}")
 
 
 @router.post("/messages/recall")

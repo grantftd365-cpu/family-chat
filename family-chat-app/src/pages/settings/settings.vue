@@ -32,9 +32,14 @@
           <text class="item-label">我的收藏</text>
           <text class="item-arrow">›</text>
         </view>
-        <view class="settings-item" @tap="showRefine">
+        <view class="settings-item" @tap="goPage('refine')">
           <text class="item-icon">🧪</text>
           <text class="item-label">炼化数字人</text>
+          <text class="item-arrow">›</text>
+        </view>
+        <view class="settings-item" @tap="goPage('voice-profiles')">
+          <text class="item-icon">🎤</text>
+          <text class="item-label">语音音色管理</text>
           <text class="item-arrow">›</text>
         </view>
         <view class="settings-item" @tap="showLLMConfig">
@@ -207,8 +212,14 @@ function showEditProfile() {
 }
 
 function goPage(name) {
-  if (name === 'moments') uni.navigateTo({ url: '/pages/moments/moments' })
-  else if (name === 'favorites') uni.navigateTo({ url: '/pages/favorites/favorites' })
+  const routes = {
+    moments: '/pages/moments/moments',
+    favorites: '/pages/favorites/favorites',
+    refine: '/pages/refine/refine',
+    'voice-profiles': '/pages/voice-profiles/voice-profiles'
+  }
+  const url = routes[name]
+  if (url) uni.navigateTo({ url })
 }
 
 function handleLogout() {

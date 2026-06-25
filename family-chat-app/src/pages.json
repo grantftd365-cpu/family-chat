@@ -62,6 +62,20 @@
         "navigationStyle": "custom",
         "navigationBarTitleText": "设置"
       }
+    },
+    {
+      "path": "pages/voice-profiles/voice-profiles",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "语音音色管理"
+      }
+    },
+    {
+      "path": "pages/refine/refine",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "炼化数字人"
+      }
     }
   ],
   "globalStyle": {

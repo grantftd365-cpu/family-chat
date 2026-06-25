@@ -35,6 +35,16 @@
         <text class="item-label">朋友圈</text>
         <text class="item-arrow">›</text>
       </view>
+      <view class="section-item" @tap="goRefine">
+        <view class="item-icon">🧪</view>
+        <text class="item-label">炼化数字人</text>
+        <text class="item-arrow">›</text>
+      </view>
+      <view class="section-item" @tap="goVoiceProfiles">
+        <view class="item-icon">🎤</view>
+        <text class="item-label">语音音色</text>
+        <text class="item-arrow">›</text>
+      </view>
     </view>
 
     <view class="section">
@@ -104,6 +114,14 @@ function goMoments() {
 
 function goFavorites() {
   uni.navigateTo({ url: '/pages/favorites/favorites' })
+}
+
+function goRefine() {
+  uni.navigateTo({ url: '/pages/refine/refine' })
+}
+
+function goVoiceProfiles() {
+  uni.navigateTo({ url: '/pages/voice-profiles/voice-profiles' })
 }
 
 function goCards() {

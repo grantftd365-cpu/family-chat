@@ -21,10 +21,14 @@ from .models.database import init_db, get_db, gen_id, now
 from .core.auth import hash_password, verify_password, create_token, get_current_user, get_ws_user
 from .core.websocket import ws_manager
 from .agents.core import AgentManager
+from .services.voice_profiles import VoiceProfileManager
+from .services.refinement import MultiModalRefinement
 
 # ==================== Lifespan ====================
 
 agent_manager: AgentManager = None
+voice_profile_manager: VoiceProfileManager = None
+refinement_service: MultiModalRefinement = None
 
 
 async def _proactive_scheduler():
@@ -66,9 +70,22 @@ async def _proactive_scheduler():
                                 from .models.database import gen_id as _gid
                                 msg_id = _gid()
                                 ts = _time.time()
+                                # 尝试生成语音回复
+                                voice_url = ""
+                                try:
+                                    voice_profile = await voice_profile_manager.get_agent_voice(row[0])
+                                    if voice_profile:
+                                        tts_path = await voice_profile_manager.synthesize(
+                                            reply, profile_id=voice_profile["id"]
+                                        )
+                                        if tts_path:
+                                            voice_url = f"/api/voice/{os.path.basename(tts_path)}"
+                                except Exception as ve:
+                                    logger.debug(f"语音合成跳过: {ve}")
+                                msg_type = "voice" if voice_url else "text"
                                 await db.execute(
-                                    "INSERT INTO messages (id,group_id,sender_id,sender_name,content,msg_type,is_agent,created_at) VALUES (?,?,?,?,?,?,?,?)",
-                                    (msg_id, g_row[0], row[0], row[1], reply, "text", 1, ts)
+                                    "INSERT INTO messages (id,group_id,sender_id,sender_name,content,msg_type,media_url,is_agent,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                                    (msg_id, g_row[0], row[0], row[1], reply, msg_type, voice_url, 1, ts)
                                 )
                                 await db.execute(
                                     "UPDATE agents SET proactive_config=json_set(proactive_config,'$.last_proactive',?) WHERE id=?",
@@ -112,6 +129,16 @@ async def lifespan(app: FastAPI):
     await agent_manager.load_agents()
     await ensure_defaults(db, agent_manager)
     # Don't close db — agent_manager holds the reference
+
+    # 初始化语音音色管理器
+    global voice_profile_manager, refinement_service
+    voice_profile_manager = VoiceProfileManager(db)
+    await voice_profile_manager.init_db()
+    logger.info("✅ 语音音色管理器就绪")
+
+    # 初始化多模态炼化服务
+    refinement_service = MultiModalRefinement(db, llm_config)
+    logger.info("✅ 多模态炼化服务就绪")
 
     logger.info("=" * 50)
     logger.info("🏠 FamilyChat v2.0 已启动！")
@@ -172,6 +199,8 @@ if frontend_dir.exists():
 # 注册路由
 from .routes import auth, chat, friends, moments, agents, search, notifications, system
 from .routes.websocket import websocket_endpoint as ws_endpoint
+from .routes.voice_profiles import router as voice_profiles_router
+from .routes.refinement import router as refinement_router
 app.add_api_websocket_route("/ws", ws_endpoint)
 app.include_router(auth.router)
 app.include_router(chat.router)
@@ -181,6 +210,8 @@ app.include_router(agents.router)
 app.include_router(search.router)
 app.include_router(notifications.router)
 app.include_router(system.router)
+app.include_router(voice_profiles_router)
+app.include_router(refinement_router)
 
 
 async def ensure_defaults(db, agent_mgr: AgentManager):

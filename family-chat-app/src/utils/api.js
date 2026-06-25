@@ -324,6 +324,151 @@ export function uploadVoice(filePath) {
   })
 }
 
+/* ========== 语音音色管理 ========== */
+
+/** 获取音色配置列表 */
+export function getVoiceProfiles() {
+  return get('/api/voice-profiles')
+}
+
+/** 获取可用 edge-tts 声音 */
+export function getAvailableVoices() {
+  return get('/api/voice-profiles/available')
+}
+
+/** 创建音色配置 */
+export function createVoiceProfile(name, edgeVoiceId, gender = '') {
+  return post('/api/voice-profiles', { name, edge_voice_id: edgeVoiceId, gender })
+}
+
+/** 上传音频创建音色配置 */
+export function uploadVoiceProfile(name, filePath, gender = '') {
+  return new Promise((resolve, reject) => {
+    const token = getToken()
+    uni.uploadFile({
+      url: CONFIG.baseUrl + '/api/voice-profiles/upload',
+      filePath,
+      name: 'file',
+      formData: { name, gender },
+      header: token ? { Authorization: `Bearer ${token}` } : {},
+      success: (res) => {
+        if (res.statusCode === 200) resolve(JSON.parse(res.data))
+        else reject(new Error('上传失败'))
+      },
+      fail: (err) => reject(new Error(err.errMsg || '上传失败'))
+    })
+  })
+}
+
+/** 删除音色配置 */
+export function deleteVoiceProfile(profileId) {
+  return del(`/api/voice-profiles/${profileId}`)
+}
+
+/** 分配音色给数字人 */
+export function assignVoiceToAgent(agentId, profileId) {
+  return post('/api/voice-profiles/assign', { agent_id: agentId, profile_id: profileId })
+}
+
+/** 获取数字人音色配置 */
+export function getAgentVoice(agentId) {
+  return get(`/api/voice-profiles/agent/${agentId}`)
+}
+
+/** 预览音色合成 */
+export function synthesizeVoicePreview(text, edgeVoiceId = '', profileId = '') {
+  return new Promise((resolve, reject) => {
+    const token = getToken()
+    uni.uploadFile({
+      url: CONFIG.baseUrl + '/api/voice-profiles/synthesize',
+      filePath: '',
+      name: 'file',
+      formData: { text, edge_voice_id: edgeVoiceId, profile_id: profileId },
+      header: token ? { Authorization: `Bearer ${token}` } : {},
+      success: (res) => {
+        if (res.statusCode === 200) {
+          const audio = uni.createInnerAudioContext()
+          audio.src = 'data:audio/mp3;base64,' + res.data
+          audio.play()
+          audio.onEnded(() => { audio.destroy(); resolve() })
+          audio.onError(() => { audio.destroy(); reject(new Error('播放失败')) })
+        } else reject(new Error('合成失败'))
+      },
+      fail: (err) => reject(new Error(err.errMsg || '合成失败'))
+    })
+  })
+}
+
+/* ========== 多模态炼化 ========== */
+
+/** 从文本炼化 */
+export function refineFromText(data) {
+  return post('/api/agents/refine/text', data)
+}
+
+/** 从语音炼化 */
+export function refineFromVoice(agentId, filePath) {
+  return new Promise((resolve, reject) => {
+    const token = getToken()
+    uni.uploadFile({
+      url: CONFIG.baseUrl + '/api/agents/refine/voice',
+      filePath,
+      name: 'file',
+      formData: { agent_id: agentId },
+      header: token ? { Authorization: `Bearer ${token}` } : {},
+      success: (res) => {
+        if (res.statusCode === 200) resolve(JSON.parse(res.data))
+        else reject(new Error('炼化失败'))
+      },
+      fail: (err) => reject(new Error(err.errMsg || '炼化失败'))
+    })
+  })
+}
+
+/** 从视频炼化 */
+export function refineFromVideo(agentId, filePath) {
+  return new Promise((resolve, reject) => {
+    const token = getToken()
+    uni.uploadFile({
+      url: CONFIG.baseUrl + '/api/agents/refine/video',
+      filePath,
+      name: 'file',
+      formData: { agent_id: agentId },
+      header: token ? { Authorization: `Bearer ${token}` } : {},
+      success: (res) => {
+        if (res.statusCode === 200) resolve(JSON.parse(res.data))
+        else reject(new Error('炼化失败'))
+      },
+      fail: (err) => reject(new Error(err.errMsg || '炼化失败'))
+    })
+  })
+}
+
+/** 从文档炼化 */
+export function refineFromDocument(agentId, filePath) {
+  return new Promise((resolve, reject) => {
+    const token = getToken()
+    uni.uploadFile({
+      url: CONFIG.baseUrl + '/api/agents/refine/document',
+      filePath,
+      name: 'file',
+      formData: { agent_id: agentId },
+      header: token ? { Authorization: `Bearer ${token}` } : {},
+      success: (res) => {
+        if (res.statusCode === 200) resolve(JSON.parse(res.data))
+        else reject(new Error('炼化失败'))
+      },
+      fail: (err) => reject(new Error(err.errMsg || '炼化失败'))
+    })
+  })
+}
+
+/** 从聊天记录炼化 */
+export function refineFromChatHistory(data) {
+  return post('/api/agents/refine/chat-history', data)
+}
+
+
 export default {
   register,
   login,
@@ -356,5 +501,18 @@ export default {
   getLLMConfig,
   updateLLMConfig,
   textToSpeech,
-  uploadVoice
+  uploadVoice,
+  getVoiceProfiles,
+  getAvailableVoices,
+  createVoiceProfile,
+  uploadVoiceProfile,
+  deleteVoiceProfile,
+  assignVoiceToAgent,
+  getAgentVoice,
+  synthesizeVoicePreview,
+  refineFromText,
+  refineFromVoice,
+  refineFromVideo,
+  refineFromDocument,
+  refineFromChatHistory
 }
