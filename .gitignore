@@ -1,8 +1,56 @@
+# === Python ===
 __pycache__/
-*.pyc
-.env
+*.py[cod]
+*$py.class
+*.so
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# === 数据文件 ===
 data/
 *.db
-*.log
+*.db-journal
+*.db-wal
+
+# === 环境变量 ===
+.env
+.env.local
+.env.production
+
+# === IDE ===
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# === 日志 ===
+*.log
+logs/
+
+# === Node.js ===
+node_modules/
+package-lock.json
+yarn.lock
+.pnpm-lock.yaml
+
+# === uni-app 构建产物 ===
+dist/
+unpackage/
+
+# === 临时文件 ===
+*.tmp
+*.bak
+*.backup
+
+# === 密钥和证书 ===
+*.pem
+*.key
+*.crt
+*.keystore
+*.jks

@@ -1,0 +1,510 @@
+<template>
+  <view class="contacts-page">
+    <!-- 导航栏 -->
+    <view class="nav-bar" :style="{ paddingTop: statusBarHeight + 'px' }">
+      <view class="nav-content">
+        <text class="nav-title">通讯录</text>
+        <view class="nav-right" @tap="showAddFriend = true">
+          <text>➕</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 搜索栏 -->
+    <view class="search-bar">
+      <view class="search-inner" @tap="goSearch">
+        <text class="search-icon">🔍</text>
+        <text class="search-placeholder">搜索联系人</text>
+      </view>
+    </view>
+
+    <!-- 功能入口 -->
+    <view class="func-section">
+      <view class="func-item" @tap="goFriendRequests">
+        <view class="func-icon">👥</view>
+        <text class="func-label">新的朋友</text>
+        <view v-if="friendRequests.length" class="func-badge">
+          <text>{{ friendRequests.length }}</text>
+        </view>
+        <text class="func-arrow">›</text>
+      </view>
+      <view class="func-item" @tap="goGroups">
+        <view class="func-icon">👨‍👩‍👧‍👦</view>
+        <text class="func-label">我的群聊</text>
+        <text class="func-arrow">›</text>
+      </view>
+      <view class="func-item" @tap="goAgents">
+        <view class="func-icon">🤖</view>
+        <text class="func-label">数字人</text>
+        <text class="func-arrow">›</text>
+      </view>
+    </view>
+
+    <!-- 好友列表 -->
+    <scroll-view scroll-y class="friend-list" :style="{ height: listHeight + 'px' }">
+      <view v-if="loading" class="loading-state">
+        <text>加载中...</text>
+      </view>
+      <view v-else-if="friends.length === 0" class="empty-state">
+        <text class="empty-icon">👤</text>
+        <text class="empty-text">暂无联系人</text>
+      </view>
+      <view v-else>
+        <!-- 字母索引分组 -->
+        <view
+          v-for="(group, letter) in groupedFriends"
+          :key="letter"
+          class="friend-group"
+        >
+          <view class="group-header">
+            <text class="group-letter">{{ letter }}</text>
+          </view>
+          <view
+            v-for="friend in group"
+            :key="friend.id"
+            class="friend-item"
+            @tap="goChat(friend)"
+          >
+            <view class="friend-avatar">
+              <image
+                v-if="friend.avatar"
+                :src="friend.avatar"
+                class="avatar-img"
+                mode="aspectFill"
+              />
+              <view v-else class="avatar-placeholder">
+                <text>{{ (friend.nickname || friend.username || '?')[0] }}</text>
+              </view>
+            </view>
+            <view class="friend-info">
+              <text class="friend-name">{{ friend.nickname || friend.username }}</text>
+              <text v-if="friend.signature" class="friend-sign">{{ friend.signature }}</text>
+            </view>
+          </view>
+        </view>
+      </view>
+    </scroll-view>
+
+    <!-- 添加好友弹窗 -->
+    <view v-if="showAddFriend" class="modal-mask" @tap="showAddFriend = false">
+      <view class="modal-content" @tap.stop>
+        <text class="modal-title">添加好友</text>
+        <view class="modal-input-wrap">
+          <input
+            v-model="searchKeyword"
+            placeholder="输入用户名或邮箱搜索"
+            class="modal-input"
+          />
+        </view>
+        <view class="modal-btns">
+          <view class="modal-btn cancel" @tap="showAddFriend = false">
+            <text>取消</text>
+          </view>
+          <view class="modal-btn confirm" @tap="handleSearchFriend">
+            <text>搜索</text>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+</template>
+
+<script setup>
+import { ref, computed } from 'vue'
+import { onShow } from '@dcloudio/uni-app'
+import { useUserStore } from '../../stores/user'
+import { useChatStore } from '../../stores/chat'
+import * as api from '../../utils/api'
+
+const userStore = useUserStore()
+const chatStore = useChatStore()
+
+const statusBarHeight = ref(44)
+const listHeight = ref(500)
+const loading = ref(false)
+const friends = ref([])
+const friendRequests = ref([])
+const showAddFriend = ref(false)
+const searchKeyword = ref('')
+
+// 按首字母分组
+const groupedFriends = computed(() => {
+  const groups = {}
+  friends.value.forEach(f => {
+    const name = (f.nickname || f.username || '').trim()
+    let letter = '#'
+    if (name) {
+      const first = name[0].toUpperCase()
+      if (/[A-Z]/.test(first)) {
+        letter = first
+      } else if (/[\u4e00-\u9fa5]/.test(first)) {
+        // 简化：中文按拼音首字母分组
+        letter = getPinyinInitial(first)
+      } else {
+        letter = '#'
+      }
+    }
+    if (!groups[letter]) groups[letter] = []
+    groups[letter].push(f)
+  })
+  // 排序
+  const sorted = {}
+  Object.keys(groups).sort().forEach(k => {
+    sorted[k] = groups[k]
+  })
+  return sorted
+})
+
+onShow(() => {
+  if (!userStore.checkLogin()) return
+  const sysInfo = uni.getSystemInfoSync()
+  statusBarHeight.value = sysInfo.statusBarHeight || 44
+  const navH = statusBarHeight.value + 44
+  const searchBarH = 56
+  const funcH = 240
+  listHeight.value = sysInfo.windowHeight - navH - searchBarH - funcH - 50
+  loadData()
+})
+
+async function loadData() {
+  loading.value = true
+  try {
+    const [friendsRes, requestsRes] = await Promise.all([
+      api.getFriends().catch(() => []),
+      api.getFriendRequests().catch(() => [])
+    ])
+    friends.value = Array.isArray(friendsRes) ? friendsRes : (friendsRes.friends || [])
+    friendRequests.value = Array.isArray(requestsRes) ? requestsRes : (requestsRes.requests || [])
+  } finally {
+    loading.value = false
+  }
+}
+
+function goSearch() {
+  uni.navigateTo({ url: '/pages/search/search' })
+}
+
+function goFriendRequests() {
+  uni.showToast({ title: '好友请求功能开发中', icon: 'none' })
+}
+
+function goGroups() {
+  uni.switchTab({ url: '/pages/index/index' })
+}
+
+function goAgents() {
+  uni.showToast({ title: '数字人功能开发中', icon: 'none' })
+}
+
+function goChat(friend) {
+  // 创建或查找与好友的聊天
+  uni.showToast({ title: '正在打开聊天...', icon: 'none' })
+}
+
+function handleSearchFriend() {
+  if (!searchKeyword.value.trim()) {
+    uni.showToast({ title: '请输入搜索内容', icon: 'none' })
+    return
+  }
+  showAddFriend.value = false
+  uni.navigateTo({
+    url: `/pages/search/search?q=${encodeURIComponent(searchKeyword.value)}`
+  })
+}
+
+// 获取拼音首字母（简化版）
+function getPinyinInitial(char) {
+  const code = char.charCodeAt(0)
+  // 简单映射常用中文字符到字母
+  const table = 'ABCDEFGHJKLMNOPQRSTWXYZ'
+  const gbCode = code - 0x4e00
+  const idx = gbCode % 26
+  return table[idx] || '#'
+}
+</script>
+
+<style lang="scss" scoped>
+.contacts-page {
+  min-height: 100vh;
+  background: var(--bg-color);
+}
+
+.nav-bar {
+  background: $primary-color;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.nav-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 88rpx;
+  padding: 0 30rpx;
+}
+
+.nav-title {
+  font-size: $font-lg;
+  font-weight: bold;
+  color: #ffffff;
+}
+
+.nav-right {
+  width: 64rpx;
+  height: 64rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36rpx;
+  color: #ffffff;
+
+  &:active {
+    opacity: 0.7;
+  }
+}
+
+.search-bar {
+  padding: 16rpx 30rpx;
+  background: $primary-color;
+}
+
+.search-inner {
+  display: flex;
+  align-items: center;
+  height: 72rpx;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: $radius-base;
+  padding: 0 24rpx;
+}
+
+.search-icon {
+  font-size: 28rpx;
+  margin-right: 12rpx;
+}
+
+.search-placeholder {
+  font-size: $font-base;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.func-section {
+  background: var(--card-bg);
+  margin-bottom: 16rpx;
+}
+
+.func-item {
+  display: flex;
+  align-items: center;
+  padding: 28rpx 30rpx;
+  border-bottom: 1rpx solid var(--border-color);
+  transition: background 0.2s;
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  &:active {
+    background: var(--bg-color);
+  }
+}
+
+.func-icon {
+  font-size: 44rpx;
+  margin-right: 24rpx;
+}
+
+.func-label {
+  flex: 1;
+  font-size: $font-base;
+  color: var(--text-primary);
+}
+
+.func-badge {
+  min-width: 36rpx;
+  height: 36rpx;
+  padding: 0 10rpx;
+  background: $danger-color;
+  border-radius: 18rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: $font-xs;
+  color: #ffffff;
+  margin-right: 16rpx;
+}
+
+.func-arrow {
+  font-size: $font-lg;
+  color: var(--text-placeholder);
+}
+
+.friend-list {
+  background: var(--card-bg);
+}
+
+.loading-state {
+  display: flex;
+  justify-content: center;
+  padding: 60rpx;
+  font-size: $font-base;
+  color: var(--text-secondary);
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 120rpx 0;
+}
+
+.empty-icon {
+  font-size: 100rpx;
+  margin-bottom: 20rpx;
+}
+
+.empty-text {
+  font-size: $font-base;
+  color: var(--text-secondary);
+}
+
+.group-header {
+  padding: 12rpx 30rpx;
+  background: var(--bg-color);
+}
+
+.group-letter {
+  font-size: $font-sm;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.friend-item {
+  display: flex;
+  align-items: center;
+  padding: 20rpx 30rpx;
+  border-bottom: 1rpx solid var(--border-color);
+  transition: background 0.2s;
+
+  &:active {
+    background: var(--bg-color);
+  }
+}
+
+.friend-avatar {
+  margin-right: 24rpx;
+  flex-shrink: 0;
+}
+
+.avatar-img {
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: $radius-base;
+}
+
+.avatar-placeholder {
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: $radius-base;
+  background: $primary-color;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32rpx;
+  font-weight: bold;
+  color: #ffffff;
+}
+
+.friend-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.friend-name {
+  font-size: $font-base;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.friend-sign {
+  font-size: $font-sm;
+  color: var(--text-secondary);
+  margin-top: 6rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 弹窗 */
+.modal-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  width: 600rpx;
+  background: var(--card-bg);
+  border-radius: $radius-lg;
+  padding: 48rpx 40rpx;
+}
+
+.modal-title {
+  font-size: $font-lg;
+  font-weight: bold;
+  color: var(--text-primary);
+  text-align: center;
+  margin-bottom: 40rpx;
+}
+
+.modal-input-wrap {
+  margin-bottom: 24rpx;
+}
+
+.modal-input {
+  height: 88rpx;
+  background: var(--bg-color);
+  border-radius: $radius-base;
+  padding: 0 24rpx;
+  font-size: $font-base;
+  color: var(--text-primary);
+}
+
+.modal-btns {
+  display: flex;
+  gap: 24rpx;
+  margin-top: 40rpx;
+}
+
+.modal-btn {
+  flex: 1;
+  height: 88rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: $radius-base;
+  font-size: $font-base;
+  font-weight: 500;
+
+  &:active {
+    opacity: 0.8;
+  }
+
+  &.cancel {
+    background: var(--bg-color);
+    color: var(--text-secondary);
+  }
+
+  &.confirm {
+    background: $primary-color;
+    color: #ffffff;
+  }
+}
+</style>

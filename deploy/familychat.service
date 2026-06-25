@@ -1,0 +1,35 @@
+[Unit]
+Description=FamilyChat - 家庭数字人聊天服务
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/family-chat
+EnvironmentFile=/opt/family-chat/.env
+ExecStart=/opt/family-chat/venv/bin/python run.py
+Restart=always
+RestartSec=5
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+# 安全加固
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/family-chat/data
+PrivateTmp=true
+
+# 资源限制
+LimitNOFILE=65536
+MemoryMax=1G
+
+# 日志
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=familychat
+
+[Install]
+WantedBy=multi-user.target

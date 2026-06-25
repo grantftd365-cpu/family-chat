@@ -1,0 +1,100 @@
+{
+  // ============================================================
+  // OpenClaw 配置模板 - FamilyChat 项目专用
+  // 复制到 ~/.openclaw/openclaw.json 并填入实际值
+  // ============================================================
+
+  // === 环境变量 ===
+  env: {
+    // 模型 API 配置（必填）
+    MIMO_API_BASE_URL: "https://your-mimo-endpoint.com/v1",
+    MIMO_API_KEY: "sk-xxxxxxxxxxxx",
+  },
+
+  // === Agent 配置 ===
+  agents: {
+    defaults: {
+      workspace: "~/.openclaw/workspace",
+      model: {
+        primary: "xiaomi/mimo-v2.5-pro",
+        thinking: "medium",
+      },
+      heartbeat: {
+        every: "30m",
+      },
+    },
+    list: [
+      {
+        id: "main",
+        identity: {
+          name: "FamilyChat 助手",
+          theme: "家庭数字人聊天项目的AI开发和运维助手",
+          emoji: "🏠",
+        },
+      },
+    ],
+  },
+
+  // === 消息渠道 ===
+  // 取消注释并配置你需要的渠道
+  channels: {
+    // --- Telegram ---
+    // telegram: {
+    //   token: "7012345678:AAFxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    //   allowFrom: ["your_username"],
+    //   groups: {
+    //     "*": { requireMention: true },
+    //   },
+    // },
+
+    // --- Discord ---
+    // discord: {
+    //   token: "MTxxxxxxxxxxxxxxxxxxxxxxxx.xxxxxx.xxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    //   allowFrom: ["user:123456789"],
+    // },
+
+    // --- QQ 机器人 ---
+    // qqbot: {
+    //   appId: "1234567890",
+    //   token: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    // },
+
+    // --- 飞书 ---
+    // feishu: {
+    //   appId: "cli_xxxxxxxxxxxxxxxx",
+    //   appSecret: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    // },
+
+    // --- WebChat（本地 Web 聊天） ---
+    // webchat: {
+    //   enabled: true,
+    // },
+  },
+
+  // === 消息配置 ===
+  messages: {
+    visibleReplies: "automatic",
+    groupChat: {
+      visibleReplies: "message_tool",
+      unmentionedInbound: "room_event",
+    },
+  },
+
+  // === 日志 ===
+  logging: {
+    level: "info",
+    consoleLevel: "info",
+    consoleStyle: "pretty",
+    redactSensitive: "tools",
+  },
+
+  // === 工具安全 ===
+  tools: {
+    exec: {
+      security: "sandbox",
+    },
+    fs: {
+      workspaceOnly: true,
+    },
+  },
+}
