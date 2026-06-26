@@ -289,21 +289,25 @@ async def init_db():
 
 
 async def get_db() -> aiosqlite.Connection:
-    """获取数据库连接（使用连接池）"""
-    global _pool
-    if _pool is None:
-        async with _pool_lock:
-            if _pool is None:
-                _pool = await aiosqlite.connect(DB_PATH, timeout=30)
-                _pool.row_factory = aiosqlite.Row
-                # 启用 WAL 模式提升并发性能
-                await _pool.execute("PRAGMA journal_mode=WAL")
-                await _pool.execute("PRAGMA synchronous=NORMAL")
-                await _pool.execute("PRAGMA cache_size=-64000")  # 64MB 缓存
-                await _pool.execute("PRAGMA temp_store=MEMORY")
-                await _pool.commit()
-                logger.info("数据库连接池已初始化 (WAL 模式)")
-    return _pool
+    """获取数据库连接（每次新建，避免并发问题）"""
+    db = await aiosqlite.connect(DB_PATH, timeout=30)
+    db.row_factory = aiosqlite.Row
+    return db
+
+
+class ManagedDB:
+    """Context manager for database connections"""
+    def __init__(self):
+        self.db = None
+
+    async def __aenter__(self):
+        self.db = await get_db()
+        return self.db
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if self.db:
+            await self.db.close()
+        return False
 
 
 async def close_db():

@@ -266,7 +266,7 @@ async def ensure_defaults(db, agent_mgr: AgentManager):
             },
         ]
         for cfg in default_agents:
-            await agent_mgr.create_agent(cfg)
+            await agent_mgr.create_agent(cfg, _db=db)
         for cfg in default_agents:
             await db.execute(
                 "INSERT OR IGNORE INTO group_members (group_id,user_id,role,joined_at) VALUES (?,?,?,?)",

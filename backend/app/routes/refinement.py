@@ -30,8 +30,34 @@ class ChatHistoryRefineReq(BaseModel):
 async def refine_from_text(req: TextRefineReq, user=Depends(get_current_user)):
     """从文本炼化数字人"""
     svc = _get_refinement()
-    result = await svc.refine_from_text(req.agent_id, req.text)
-    return result
+    try:
+        result = await svc.refine_from_text(req.agent_id, req.text)
+        return result
+    except ValueError as e:
+        # LLM not configured — do basic keyword extraction instead
+        from ..models.database import get_db, now
+        import json
+        traits = {"traits": [], "speaking_style": "", "interests": [], "catchphrases": []}
+        text = req.text
+        # Simple keyword extraction
+        happy_words = ["开心", "高兴", "乐观", "开朗", "爱笑", "活泼"]
+        kind_words = ["善良", "温柔", "体贴", "关心", "真诚"]
+        for w in happy_words:
+            if w in text: traits["traits"].append(w)
+        for w in kind_words:
+            if w in text: traits["traits"].append(w)
+        if not traits["traits"]:
+            traits["traits"] = ["善于表达"]
+        db = await get_db()
+        try:
+            await db.execute(
+                "UPDATE agents SET traits=?,speaking_style=?,refinement_count=refinement_count+1,updated_at=? WHERE id=?",
+                (json.dumps(traits["traits"], ensure_ascii=False), traits["speaking_style"], now(), req.agent_id)
+            )
+            await db.commit()
+        finally:
+            await db.close()
+        return {"success": True, "traits": traits, "source": "text", "note": "LLM未配置，使用关键词提取"}
 
 
 @router.post("/voice")

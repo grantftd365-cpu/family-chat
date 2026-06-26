@@ -214,7 +214,26 @@ async def refine_text(req: RefineTextReq, user=Depends(get_current_user)):
         await agent.memory.add_long_term(f"[炼化分析] {result[:1000]}", importance=0.8)
         return {"status": "ok", "message": "数据已记录", "raw": result[:500]}
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        # LLM not configured — do basic keyword extraction
+        traits_data = {"traits": [], "speaking_style": "", "interests": [], "catchphrases": []}
+        happy_words = ["开心", "高兴", "乐观", "开朗", "爱笑", "活泼"]
+        kind_words = ["善良", "温柔", "体贴", "关心", "真诚"]
+        for w in happy_words:
+            if w in req.text: traits_data["traits"].append(w)
+        for w in kind_words:
+            if w in req.text: traits_data["traits"].append(w)
+        if not traits_data["traits"]:
+            traits_data["traits"] = ["善于表达"]
+        p = agent.personality
+        p.traits = list(set(p.traits + traits_data["traits"]))
+        db = await get_db()
+        await db.execute(
+            "UPDATE agents SET traits=?,refinement_count=refinement_count+1,updated_at=? WHERE id=?",
+            (json.dumps(p.traits, ensure_ascii=False), now(), req.agent_id)
+        )
+        await db.commit()
+        await db.close()
+        return {"status": "ok", "message": f"炼化完成（关键词模式）", "traits": traits_data, "note": "LLM未配置"}
     except Exception as e:
         logger.error(f"炼化失败: {e}")
         raise HTTPException(500, f"炼化失败: {e}")
