@@ -94,11 +94,30 @@ print('数据库初始化完成')
 # 安装 OpenClaw（如果未安装）
 # ============================================================
 if ! command -v openclaw &> /dev/null; then
-    warn "OpenClaw 未安装"
-    info "如需安装 OpenClaw，请运行: npm install -g openclaw"
+    info "安装 OpenClaw..."
+    if command -v npm &> /dev/null; then
+        npm install -g openclaw 2>/dev/null && ok "OpenClaw 已安装" || warn "OpenClaw 安装失败，请手动安装: npm install -g openclaw"
+    else
+        warn "npm 未安装，请先安装 Node.js，然后运行: npm install -g openclaw"
+    fi
 else
     OC_VERSION=$(openclaw --version 2>/dev/null | head -1)
     ok "OpenClaw: $OC_VERSION"
+fi
+
+# ============================================================
+# 阿里云优化（可选）
+# ============================================================
+if [ -f /etc/redhat-release ] || [ -f /etc/alinux-release ]; then
+    info "检测到阿里云 ECS，应用优化配置..."
+    # 设置时区
+    timedatectl set-timezone Asia/Shanghai 2>/dev/null || true
+    # 优化内核参数
+    if [ -f /etc/sysctl.conf ]; then
+        grep -q 'net.core.somaxconn' /etc/sysctl.conf || echo 'net.core.somaxconn = 65535' >> /etc/sysctl.conf
+        sysctl -p 2>/dev/null || true
+    fi
+    ok "阿里云优化完成"
 fi
 
 # ============================================================
