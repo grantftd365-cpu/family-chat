@@ -1,4 +1,4 @@
-"""语音音色管理服务 - 支持录音/上传/分析/克隆"""
+"""语音音色管理服务 - 支持录音/上传/分析/克隆/声音克隆引擎"""
 import json
 import os
 import uuid
@@ -6,10 +6,14 @@ import subprocess
 import asyncio
 from pathlib import Path
 from loguru import logger
+import httpx
 
 # 音频存储目录
 VOICE_DIR = "data/voice_profiles"
 os.makedirs(VOICE_DIR, exist_ok=True)
+
+# ElevenLabs 配置
+elevenlabs_base = "https://api.elevenlabs.io/v1"
 
 # edge-tts 预设音色库
 EDGE_TTS_VOICES = {
@@ -35,7 +39,8 @@ class VoiceProfile:
                  original_file: str = "", pitch: float = 0.5,
                  speed: float = 1.0, gender: str = "",
                  duration: float = 0, sample_rate: int = 16000,
-                 metadata: dict = None):
+                 metadata: dict = None, voice_engine: str = "edge-tts",
+                 clone_voice_id: str = ""):
         self.id = profile_id
         self.name = name
         self.edge_voice_id = edge_voice_id
@@ -46,6 +51,8 @@ class VoiceProfile:
         self.duration = duration
         self.sample_rate = sample_rate
         self.metadata = metadata or {}
+        self.voice_engine = voice_engine  # "edge-tts" | "elevenlabs"
+        self.clone_voice_id = clone_voice_id  # ElevenLabs voice ID for cloned voices
 
     def to_dict(self):
         return {
@@ -60,6 +67,9 @@ class VoiceProfile:
             "duration": self.duration,
             "sample_rate": self.sample_rate,
             "metadata": self.metadata,
+            "voice_engine": self.voice_engine,
+            "clone_voice_id": self.clone_voice_id,
+            "is_cloned": self.voice_engine == "elevenlabs" and bool(self.clone_voice_id),
         }
 
 
@@ -87,6 +97,8 @@ class VoiceProfileManager:
                 duration REAL DEFAULT 0,
                 sample_rate INTEGER DEFAULT 16000,
                 metadata TEXT DEFAULT '{}',
+                voice_engine TEXT DEFAULT 'edge-tts',
+                clone_voice_id TEXT DEFAULT '',
                 created_at REAL,
                 updated_at REAL
             )
@@ -124,6 +136,8 @@ class VoiceProfileManager:
                     duration=data.get("duration", 0),
                     sample_rate=data.get("sample_rate", 16000),
                     metadata=meta,
+                    voice_engine=data.get("voice_engine", "edge-tts"),
+                    clone_voice_id=data.get("clone_voice_id", ""),
                 )
 
         async with db.execute("SELECT * FROM agent_voice_map") as cursor:
@@ -133,10 +147,13 @@ class VoiceProfileManager:
         logger.info(f"加载了 {len(self._profiles)} 个语音音色配置")
 
     async def create_profile(self, name: str, audio_file_path: str = "",
-                              edge_voice_id: str = "", gender: str = "") -> VoiceProfile:
+                              edge_voice_id: str = "", gender: str = "",
+                              voice_engine: str = "edge-tts",
+                              clone_voice_id: str = "") -> VoiceProfile:
         """创建语音音色配置
-        如果提供了音频文件，自动分析音色特征并匹配最接近的 edge-tts 声音
-        如果直接指定了 edge_voice_id，直接使用
+        如果 voice_engine='elevenlabs' 且提供了 clone_voice_id，直接使用克隆声音
+        如果提供了音频文件且 voice_engine='elevenlabs'，自动克隆
+        否则匹配 edge-tts 预设声音
         """
         profile_id = f"vp_{uuid.uuid4().hex[:12]}"
         pitch = 0.5
@@ -153,25 +170,31 @@ class VoiceProfileManager:
                 shutil.copy2(audio_file_path, saved_path)
                 original_file = saved_path
 
-            # 分析音频特征（容错处理）
-            try:
-                features = await self._analyze_audio(saved_path)
-                pitch = features.get("pitch", 0.5)
-                speed = features.get("speed", 1.0)
-                duration = features.get("duration", 0)
-                if not gender:
-                    gender = features.get("gender", "")
-            except Exception as e:
-                logger.warning(f"音频分析失败，使用默认值: {e}")
-                pitch = 0.5
-                speed = 1.0
-                duration = 0
+            if voice_engine == "elevenlabs":
+                # ElevenLabs 声音克隆
+                if not clone_voice_id:
+                    clone_voice_id = await self._clone_elevenlabs_voice(saved_path, name)
+                    if not clone_voice_id:
+                        logger.warning("ElevenLabs 声音克隆失败，回退到 edge-tts")
+                        voice_engine = "edge-tts"
 
-            # 匹配最接近的 edge-tts 声音
-            if not edge_voice_id:
-                edge_voice_id = self._match_voice(pitch, speed, gender)
+            if voice_engine != "elevenlabs":
+                # 分析音频特征（容错处理）
+                try:
+                    features = await self._analyze_audio(saved_path)
+                    pitch = features.get("pitch", 0.5)
+                    speed = features.get("speed", 1.0)
+                    duration = features.get("duration", 0)
+                    if not gender:
+                        gender = features.get("gender", "")
+                except Exception as e:
+                    logger.warning(f"音频分析失败，使用默认值: {e}")
 
-        if not edge_voice_id:
+                # 匹配最接近的 edge-tts 声音
+                if not edge_voice_id:
+                    edge_voice_id = self._match_voice(pitch, speed, gender)
+
+        if not edge_voice_id and voice_engine != "elevenlabs":
             edge_voice_id = "zh-CN-XiaoxiaoNeural"
 
         profile = VoiceProfile(
@@ -183,23 +206,71 @@ class VoiceProfileManager:
             speed=speed,
             gender=gender,
             duration=duration,
+            voice_engine=voice_engine,
+            clone_voice_id=clone_voice_id,
         )
 
         # 存入数据库
         db = self.db
         from ..models.database import now
         await db.execute(
-            """INSERT INTO voice_profiles (id, name, edge_voice_id, original_file, pitch, speed, gender, duration, sample_rate, metadata, created_at, updated_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            """INSERT INTO voice_profiles (id, name, edge_voice_id, original_file, pitch, speed, gender, duration, sample_rate, metadata, voice_engine, clone_voice_id, created_at, updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (profile.id, profile.name, profile.edge_voice_id, profile.original_file,
              profile.pitch, profile.speed, profile.gender, profile.duration,
-             profile.sample_rate, json.dumps(profile.metadata), now(), now())
+             profile.sample_rate, json.dumps(profile.metadata),
+             profile.voice_engine, profile.clone_voice_id, now(), now())
         )
         await db.commit()
 
         self._profiles[profile_id] = profile
-        logger.info(f"创建语音音色: {name} -> {edge_voice_id}")
+        engine_desc = "ElevenLabs 克隆" if voice_engine == "elevenlabs" else "edge-tts"
+        logger.info(f"创建语音音色: {name} -> {engine_desc} ({edge_voice_id or clone_voice_id})")
         return profile
+
+    async def _clone_elevenlabs_voice(self, audio_path: str, name: str) -> str:
+        """使用 ElevenLabs API 克隆声音
+        上传音频文件 -> 创建克隆声音 -> 返回 voice_id
+        """
+        api_key = os.getenv("ELEVENLABS_API_KEY", "")
+        if not api_key:
+            logger.warning("ELEVENLABS_API_KEY 未配置，无法克隆声音")
+            return ""
+
+        try:
+            async with httpx.AsyncClient(timeout=120) as client:
+                with open(audio_path, "rb") as f:
+                    audio_data = f.read()
+
+                # 检查文件大小 (ElevenLabs 需要至少 1KB)
+                if len(audio_data) < 1024:
+                    logger.warning("音频文件太短，无法克隆")
+                    return ""
+
+                resp = await client.post(
+                    f"{elevenlabs_base}/voices/add",
+                    headers={"xi-api-key": api_key},
+                    files={
+                        "files": (Path(audio_path).name, audio_data, "audio/mpeg"),
+                    },
+                    data={
+                        "name": f"FamilyChat_{name}_{uuid.uuid4().hex[:6]}",
+                        "description": f"FamilyChat 克隆音色 - {name}",
+                    },
+                )
+
+                if resp.status_code == 200:
+                    result = resp.json()
+                    voice_id = result.get("voice_id", "")
+                    logger.info(f"ElevenLabs 声音克隆成功: {voice_id}")
+                    return voice_id
+                else:
+                    logger.error(f"ElevenLabs 克隆失败: {resp.status_code} {resp.text}")
+                    return ""
+
+        except Exception as e:
+            logger.error(f"ElevenLabs 克隆异常: {e}")
+            return ""
 
     async def _analyze_audio(self, audio_path: str) -> dict:
         """分析音频文件的音色特征"""
@@ -395,12 +466,23 @@ class VoiceProfileManager:
 
     async def synthesize(self, text: str, profile_id: str = "",
                           edge_voice_id: str = "") -> str:
-        """使用指定音色合成语音，返回文件路径"""
+        """使用指定音色合成语音，返回文件路径
+        优先使用 ElevenLabs（如果音色是克隆的），否则用 edge-tts
+        """
+        profile = None
         if profile_id:
             profile = self._profiles.get(profile_id)
-            if profile:
-                edge_voice_id = profile.edge_voice_id
 
+        # ElevenLabs 克隆声音合成
+        if profile and profile.voice_engine == "elevenlabs" and profile.clone_voice_id:
+            result = await self._synthesize_elevenlabs(text, profile.clone_voice_id)
+            if result:
+                return result
+            logger.warning("ElevenLabs 合成失败，回退到 edge-tts")
+
+        # edge-tts 合成
+        if profile:
+            edge_voice_id = profile.edge_voice_id
         if not edge_voice_id:
             edge_voice_id = "zh-CN-XiaoxiaoNeural"
 
@@ -419,6 +501,46 @@ class VoiceProfileManager:
             return output_path
         except Exception as e:
             logger.error(f"语音合成失败: {e}")
+            return ""
+
+    async def _synthesize_elevenlabs(self, text: str, voice_id: str) -> str:
+        """使用 ElevenLabs API 合成语音"""
+        api_key = os.getenv("ELEVENLABS_API_KEY", "")
+        if not api_key:
+            return ""
+
+        output_path = os.path.join(VOICE_DIR, f"el_{uuid.uuid4().hex[:8]}.mp3")
+
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                resp = await client.post(
+                    f"{elevenlabs_base}/text-to-speech/{voice_id}",
+                    headers={
+                        "xi-api-key": api_key,
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "text": text,
+                        "model_id": "eleven_multilingual_v2",
+                        "voice_settings": {
+                            "stability": 0.5,
+                            "similarity_boost": 0.75,
+                            "style": 0.0,
+                            "use_speaker_boost": True,
+                        },
+                    },
+                )
+
+                if resp.status_code == 200:
+                    with open(output_path, "wb") as f:
+                        f.write(resp.content)
+                    return output_path
+                else:
+                    logger.error(f"ElevenLabs 合成失败: {resp.status_code}")
+                    return ""
+
+        except Exception as e:
+            logger.error(f"ElevenLabs 合成异常: {e}")
             return ""
 
     def get_available_voices(self) -> list[dict]:

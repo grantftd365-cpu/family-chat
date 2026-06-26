@@ -340,6 +340,9 @@ input,textarea,button { font-family:inherit; font-size:16px; }
 .voice-option { padding:12px; border:1px solid var(--border); border-radius:8px; text-align:center; cursor:pointer; transition:all .2s; }
 .voice-option:hover { border-color:var(--green); }
 .voice-option.selected { border-color:var(--green); background:rgba(7,193,96,.08); }
+.clone-mode-option { border:1px solid var(--border); }
+.clone-mode-option:hover { border-color:var(--green); }
+.clone-mode-option.selected { border-color:var(--green) !important; background:rgba(7,193,96,.08) !important; }
 .voice-option .emoji { font-size:24px; }
 .voice-option .name { font-size:13px; margin-top:4px; }
 .voice-option .desc { font-size:11px; color:var(--text-sub); }
@@ -731,15 +734,30 @@ input,textarea,button { font-family:inherit; font-size:16px; }
     </div>
     <div id="voicePanelUpload" class="refine-panel">
       <input id="voiceUploadName" placeholder="音色名称" style="margin-bottom:12px">
+      <div style="margin-bottom:12px">
+        <div style="font-size:13px;color:var(--text-sub);margin-bottom:8px">克隆模式</div>
+        <div style="display:flex;gap:8px">
+          <label style="flex:1;padding:12px;border:1px solid var(--border);border-radius:8px;text-align:center;cursor:pointer;transition:all .2s" class="clone-mode-option selected" onclick="selectCloneMode(this,'edge-tts')">
+            <div style="font-size:20px">🎵</div>
+            <div style="font-size:13px;margin-top:4px">相似匹配</div>
+            <div style="font-size:11px;color:var(--text-sub)">匹配预设声音</div>
+          </label>
+          <label style="flex:1;padding:12px;border:1px solid var(--border);border-radius:8px;text-align:center;cursor:pointer;transition:all .2s" class="clone-mode-option" onclick="selectCloneMode(this,'elevenlabs')">
+            <div style="font-size:20px">🧬</div>
+            <div style="font-size:13px;margin-top:4px">完美克隆</div>
+            <div style="font-size:11px;color:var(--text-sub)">ElevenLabs AI</div>
+          </label>
+        </div>
+      </div>
       <div class="upload-zone" onclick="$('voiceUploadInput').click()">
         <div class="icon">📤</div>
-        <div>上传音频文件克隆音色</div>
-        <div style="font-size:12px;margin-top:4px">系统会自动分析音色特征并匹配最接近的声音</div>
+        <div>上传音频文件</div>
+        <div style="font-size:12px;margin-top:4px" id="voiceUploadHint">相似匹配：自动分析并匹配最接近的声音</div>
       </div>
       <input type="file" id="voiceUploadInput" accept="audio/*,video/*" style="display:none" onchange="showVoiceUploadPreview(this)">
       <div id="voiceUploadPreview" class="upload-preview"><span class="name"></span><span class="remove" onclick="clearVoiceUpload()">✕</span></div>
       <select id="voiceUploadGender" style="width:100%;padding:10px;border:0.5px solid var(--border);border-radius:6px;font-size:14px;margin-top:8px;background:var(--card);color:var(--text);">
-        <option value="">性别（可选，帮助匹配）</option>
+        <option value="">性别（可选）</option>
         <option value="male">男</option>
         <option value="female">女</option>
       </select>
@@ -1718,6 +1736,25 @@ async function doRefineEnhanced() {
 
 // ==================== Voice Profile Management ====================
 let selectedVoiceId = '';
+let selectedCloneMode = 'edge-tts';
+
+function selectCloneMode(el, mode) {
+  document.querySelectorAll('.clone-mode-option').forEach(o => {
+    o.classList.remove('selected');
+    o.style.borderColor = 'var(--border)';
+    o.style.background = '';
+  });
+  el.classList.add('selected');
+  el.style.borderColor = 'var(--green)';
+  el.style.background = 'rgba(7,193,96,.08)';
+  selectedCloneMode = mode;
+  const hint = document.getElementById('voiceUploadHint');
+  if (hint) {
+    hint.textContent = mode === 'elevenlabs'
+      ? '完美克隆：上传 1 分钟+ 音频，AI 学习并复刻声音'
+      : '相似匹配：自动分析并匹配最接近的声音';
+  }
+}
 
 async function loadVoiceProfiles() {
   const el = $('voiceProfileList');
@@ -1820,9 +1857,14 @@ async function doCreateVoice() {
       const form = new FormData();
       form.append('name', name);
       form.append('file', file);
+      form.append('voice_engine', selectedCloneMode);
       const gender = $('voiceUploadGender').value;
       if (gender) form.append('gender', gender);
-      await fetch('/api/voice-profiles/upload', {method:'POST', headers:{'Authorization':'Bearer '+S.token}, body:form}).then(r=>r.json());
+      const resp = await fetch('/api/voice-profiles/upload', {method:'POST', headers:{'Authorization':'Bearer '+S.token}, body:form});
+      const data = await resp.json();
+      if (data.is_cloned) {
+        toast('🎉 声音克隆成功！数字人现在可以用一模一样的声音说话了');
+      }
     }
     closeModal($('createVoiceModal'));
     toast('音色创建成功！');

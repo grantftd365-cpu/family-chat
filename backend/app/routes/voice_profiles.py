@@ -64,26 +64,30 @@ async def create_profile(req: CreateProfileReq, user=Depends(get_current_user)):
 async def upload_voice_profile(
     name: str = Form(...),
     gender: str = Form(""),
+    voice_engine: str = Form("edge-tts"),
     file: UploadFile = File(...),
     user=Depends(get_current_user)
 ):
     """上传语音文件创建音色配置
-    自动分析音色特征并匹配最接近的 edge-tts 声音
+    voice_engine='edge-tts': 分析音色特征匹配预设声音
+    voice_engine='elevenlabs': 使用 ElevenLabs 克隆一模一样的声音
     """
     if not file.content_type or not file.content_type.startswith("audio/"):
-        # 也允许视频文件（提取音频）
         if not file.content_type or not file.content_type.startswith("video/"):
             raise HTTPException(400, "请上传音频或视频文件")
 
-    # 保存上传文件
     import uuid, os
     ext = file.filename.rsplit(".", 1)[-1] if "." in file.filename else "mp3"
-    temp_path = f"data/voice_profiles/upload_{uuid.uuid4().hex[:8]}.{ext}"
+    temp_path = f"data/voice_profiles/upload_{uuid.uuid4().hex[:8]}{ext}"
     os.makedirs("data/voice_profiles", exist_ok=True)
 
     content = await file.read()
-    if len(content) > 50 * 1024 * 1024:  # 50MB 限制
+    if len(content) > 50 * 1024 * 1024:
         raise HTTPException(400, "文件不能超过 50MB")
+
+    # ElevenLabs 声音克隆需要至少 1 分钟音频
+    if voice_engine == "elevenlabs" and len(content) < 500 * 1024:
+        raise HTTPException(400, "声音克隆需要至少 1 分钟的音频，请上传更长的录音")
 
     with open(temp_path, "wb") as f:
         f.write(content)
@@ -94,6 +98,7 @@ async def upload_voice_profile(
             name=name,
             audio_file_path=temp_path,
             gender=gender,
+            voice_engine=voice_engine,
         )
         return profile.to_dict()
     except Exception as e:
