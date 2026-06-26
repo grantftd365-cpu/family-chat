@@ -264,20 +264,19 @@ class MultiModalRefinement:
             return ""
 
     def _analyze_chat_patterns(self, messages: list[dict]) -> dict:
-        """分析聊天模式"""
+        """分析聊天模式 - 深度习惯学习"""
         if not messages:
             return {}
 
-        # 统计信息
+        import re
+        from collections import Counter
+
         total = len(messages)
         msg_lengths = [len(m.get("content", "")) for m in messages]
         avg_length = sum(msg_lengths) / total if total else 0
 
         # 消息类型分布
-        type_count = {}
-        for m in messages:
-            t = m.get("msg_type", "text")
-            type_count[t] = type_count.get(t, 0) + 1
+        type_count = Counter(m.get("msg_type", "text") for m in messages)
 
         # 活跃时间分析
         hours = []
@@ -286,62 +285,99 @@ class MultiModalRefinement:
             if ts:
                 from datetime import datetime
                 if isinstance(ts, (int, float)):
-                    if ts > 1e12:
-                        ts = ts / 1000
+                    if ts > 1e12: ts = ts / 1000
                     hours.append(datetime.fromtimestamp(ts).hour)
                 elif isinstance(ts, str):
-                    try:
-                        hours.append(datetime.fromisoformat(ts).hour)
-                    except:
-                        pass
+                    try: hours.append(datetime.fromisoformat(ts).hour)
+                    except: pass
+        hour_dist = Counter(hours)
+        peak_hours = [h for h, _ in hour_dist.most_common(3)]
 
-        hour_dist = {}
-        for h in hours:
-            hour_dist[h] = hour_dist.get(h, 0) + 1
-
-        peak_hours = sorted(hour_dist.items(), key=lambda x: -x[1])[:3]
-
-        # 表情使用
-        emoji_count = 0
-        import re
+        # 表情使用分析
         emoji_pattern = re.compile(
-            "["
-            "\U0001F600-\U0001F64F"
-            "\U0001F300-\U0001F5FF"
-            "\U0001F680-\U0001F6FF"
-            "\U0001F1E0-\U0001F1FF"
-            "\U00002702-\U000027B0"
-            "\U0001f926-\U0001f937"
-            "\U00010000-\U0010ffff"
-            "]+", flags=re.UNICODE
+            "[\U0001F600-\U0001F64F\U0001F300-\U0001F5FF\U0001F680-\U0001F6FF"
+            "\U0001F1E0-\U0001F1FF\U00002702-\U000027B0\U0001f926-\U0001f937"
+            "\U00010000-\U0010ffff]+", flags=re.UNICODE
         )
+        all_emojis = []
         for m in messages:
             content = m.get("content", "")
-            emoji_count += len(emoji_pattern.findall(content))
+            all_emojis.extend(emoji_pattern.findall(content))
+        emoji_freq = Counter(all_emojis).most_common(10)
+        emoji_rate = round(len(all_emojis) / total, 2) if total else 0
+
+        # 常用词汇和短语分析
+        all_words = []
+        all_phrases = []
+        for m in messages:
+            content = m.get("content", "").strip()
+            if not content or content.startswith('['): continue
+            # 提取常用词（2-4字）
+            for i in range(len(content)-1):
+                for l in range(2, min(5, len(content)-i+1)):
+                    word = content[i:i+l]
+                    if not re.match(r'^[\s\W]+$', word):
+                        all_words.append(word)
+            # 提取完整短语（标点分割）
+            phrases = re.split(r'[，。！？,.!?]', content)
+            all_phrases.extend([p.strip() for p in phrases if 2 <= len(p.strip()) <= 20])
+
+        word_freq = Counter(all_words).most_common(20)
+        phrase_freq = Counter(all_phrases).most_common(10)
+
+        # 语气和风格分析
+        exclamation_rate = sum(1 for m in messages if '！' in m.get('content','') or '!' in m.get('content','')) / total if total else 0
+        question_rate = sum(1 for m in messages if '？' in m.get('content','') or '?' in m.get('content','')) / total if total else 0
+        short_msg_rate = sum(1 for l in msg_lengths if l < 10) / total if total else 0
+
+        # 标点习惯
+        punct_counter = Counter()
+        for m in messages:
+            c = m.get('content', '')
+            for p in ['～', '…', '。。。', '！！', '？？', '哈哈', '嗯嗯', '嘻嘻']:
+                if p in c:
+                    punct_counter[p] += 1
 
         return {
             "total_messages": total,
             "avg_message_length": round(avg_length, 1),
-            "msg_type_distribution": type_count,
-            "peak_active_hours": [h for h, _ in peak_hours],
-            "emoji_usage_rate": round(emoji_count / total, 2) if total else 0,
-            "short_message_rate": round(sum(1 for l in msg_lengths if l < 10) / total, 2) if total else 0,
+            "msg_type_distribution": dict(type_count),
+            "peak_active_hours": peak_hours,
+            "emoji_usage_rate": emoji_rate,
+            "top_emojis": [e for e, _ in emoji_freq],
+            "short_message_rate": round(short_msg_rate, 2),
+            "exclamation_rate": round(exclamation_rate, 2),
+            "question_rate": round(question_rate, 2),
+            "common_words": [w for w, _ in word_freq[:10]],
+            "common_phrases": [p for p, _ in phrase_freq[:5]],
+            "punctuation_habits": dict(punct_counter.most_common(5)),
         }
 
     def _build_extraction_prompt(self, source_type: str, content: str,
                                   analysis: dict = None) -> str:
-        """构建性格提取提示词"""
+        """构建性格提取提示词 - 深度习惯学习"""
         source_desc = {
             "text": "以下是一段文字描述，请从中提取人物的性格特征",
             "voice_transcript": "以下是语音转录的文字，请从中提取说话者的性格特征",
             "video_transcript": "以下是视频中提取的语音转录，请从中提取说话者的性格特征",
             "document": "以下是文档内容，请从中提取人物的性格特征",
-            "chat_history": "以下是聊天记录，请分析发送者的性格特征和说话习惯",
+            "chat_history": "以下是聊天记录，请深度分析发送者的性格特征、说话习惯、用词偏好、表情使用习惯",
         }
 
         analysis_text = ""
         if analysis:
-            analysis_text = f"\n\n聊天统计分析:\n{json.dumps(analysis, ensure_ascii=False, indent=2)}"
+            analysis_text = f"""\n\n聊天习惯分析:
+- 平均消息长度: {analysis.get('avg_message_length', 0)} 字
+- 活跃时段: {analysis.get('peak_active_hours', [])}
+- 常用表情: {', '.join(analysis.get('top_emojis', [])[:5])}
+- 表情使用频率: {analysis.get('emoji_usage_rate', 0)}
+- 短消息比例: {analysis.get('short_message_rate', 0)}
+- 感叹句比例: {analysis.get('exclamation_rate', 0)}
+- 疑问句比例: {analysis.get('question_rate', 0)}
+- 常用词汇: {', '.join(analysis.get('common_words', [])[:8])}
+- 常用短语: {', '.join(analysis.get('common_phrases', [])[:3])}
+- 标点习惯: {analysis.get('punctuation_habits', {})}
+"""
 
         return f"""{source_desc.get(source_type, "请提取性格特征")}
 
@@ -355,7 +391,7 @@ class MultiModalRefinement:
 {{
     "name": "推测的姓名或昵称",
     "personality_traits": ["性格特征1", "性格特征2"],
-    "speaking_style": "说话风格描述",
+    "speaking_style": "说话风格描述（要详细，包括语气、节奏、用词偏好）",
     "interests": ["兴趣1", "兴趣2"],
     "catchphrases": ["口头禅1", "口头禅2"],
     "humor_style": "幽默风格",
@@ -363,7 +399,10 @@ class MultiModalRefinement:
     "backstory": "背景故事推测",
     "values": ["价值观1", "价值观2"],
     "age_range": "推测年龄段",
-    "gender": "推测性别"
+    "gender": "推测性别",
+    "emoji_habits": "表情使用习惯描述",
+    "response_style": "回复风格（简短/详细、快/慢、主动/被动）",
+    "typical_responses": ["典型回复1", "典型回复2"]
 }}
 
 只输出 JSON，不要其他文字。"""
