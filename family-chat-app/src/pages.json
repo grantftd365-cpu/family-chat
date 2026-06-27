@@ -76,6 +76,13 @@
         "navigationStyle": "custom",
         "navigationBarTitleText": "炼化数字人"
       }
+    },
+    {
+      "path": "pages/refine/questionnaire",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "深层问卷"
+      }
     }
   ],
   "globalStyle": {

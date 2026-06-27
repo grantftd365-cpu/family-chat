@@ -9,6 +9,56 @@
     </view>
 
     <scroll-view scroll-y class="refine-content">
+      <!-- 七层雷达图 -->
+      <view v-if="essenceData" class="section">
+        <text class="section-title">七层本质</text>
+        <view class="radar-card">
+          <essence-radar :data="essenceData" :size="radarSize" />
+        </view>
+      </view>
+
+      <!-- 炼化进度 -->
+      <view v-if="completenessData" class="section">
+        <view class="progress-header">
+          <text class="section-title">炼化进度</text>
+          <text class="overall-percent">{{ overallPercent }}%</text>
+        </view>
+        <view class="progress-list">
+          <view
+            v-for="dim in progressDimensions"
+            :key="dim.key"
+            class="progress-item"
+          >
+            <view class="progress-label">
+              <text class="progress-name">{{ dim.label }}</text>
+              <text v-if="dim.percent >= 100" class="progress-check">✅</text>
+              <text class="progress-percent">{{ dim.percent }}%</text>
+            </view>
+            <view class="progress-bar-bg">
+              <view
+                class="progress-bar-fill"
+                :style="{
+                  width: dim.percent + '%',
+                  background: dim.color
+                }"
+              ></view>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <!-- 深层问卷入口 -->
+      <view class="section">
+        <view class="questionnaire-entry" @tap="goToQuestionnaire">
+          <view class="entry-icon">📝</view>
+          <view class="entry-info">
+            <text class="entry-title">深层问卷</text>
+            <text class="entry-desc">回答 10 个深层问题，完善数字人的本质认知</text>
+          </view>
+          <text class="entry-arrow">›</text>
+        </view>
+      </view>
+
       <!-- 选择数字人 -->
       <view class="section">
         <text class="section-title">选择数字人</text>
@@ -18,7 +68,7 @@
             :key="agent.id"
             class="agent-card"
             :class="{ active: selectedAgent === agent.id }"
-            @tap="selectedAgent = agent.id"
+            @tap="selectAgent(agent.id)"
           >
             <text class="agent-avatar">{{ agent.avatar || '🤖' }}</text>
             <text class="agent-name">{{ agent.name }}</text>
@@ -210,6 +260,7 @@
 import { ref, computed } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import * as api from '../utils/api'
+import EssenceRadar from '../../components/essence-radar.vue'
 
 const statusBarHeight = ref(44)
 const agents = ref([])
@@ -224,8 +275,35 @@ const videoFile = ref(null)
 const docFile = ref(null)
 const submitting = ref(false)
 const refineResult = ref(null)
+const essenceData = ref(null)
+const completenessData = ref(null)
+const radarSize = ref(280)
 let recorderManager = null
 let recordTimer = null
+
+const progressDimensions = computed(() => {
+  if (!completenessData.value) return []
+  const dims = [
+    { key: 'cognition', label: '认知', color: '#07C160' },
+    { key: 'knowledge', label: '知识', color: '#10AEFF' },
+    { key: 'emotion', label: '情感', color: '#FA5151' },
+    { key: 'language', label: '语言', color: '#FFC300' },
+    { key: 'value', label: '价值', color: '#6467F0' },
+    { key: 'relation', label: '关系', color: '#E855D3' },
+    { key: 'narrative', label: '叙事', color: '#FF8C42' }
+  ]
+  return dims.map(d => ({
+    ...d,
+    percent: Math.round((completenessData.value[d.key] || 0) * 100)
+  }))
+})
+
+const overallPercent = computed(() => {
+  if (!completenessData.value) return 0
+  const vals = Object.values(completenessData.value)
+  if (!vals.length) return 0
+  return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 100)
+})
 
 const canSubmit = computed(() => {
   if (!selectedAgent.value) return false
@@ -242,6 +320,7 @@ const canSubmit = computed(() => {
 onLoad(() => {
   const sysInfo = uni.getSystemInfoSync()
   statusBarHeight.value = sysInfo.statusBarHeight || 44
+  radarSize.value = Math.min(sysInfo.windowWidth - 80, 320)
   loadData()
   initRecorder()
 })
@@ -254,10 +333,42 @@ async function loadData() {
     ])
     agents.value = Array.isArray(agentsRes) ? agentsRes : (agentsRes.agents || [])
     groups.value = Array.isArray(groupsRes) ? groupsRes : (groupsRes.groups || [])
-    if (agents.value.length) selectedAgent.value = agents.value[0].id
+    if (agents.value.length) {
+      selectedAgent.value = agents.value[0].id
+      loadEssenceData(agents.value[0].id)
+    }
   } catch (e) {
     console.error('加载数据失败:', e)
   }
+}
+
+async function loadEssenceData(agentId) {
+  if (!agentId) return
+  try {
+    const [essence, completeness] = await Promise.all([
+      api.getAgentEssence(agentId).catch(() => null),
+      api.getRefinementCompleteness(agentId).catch(() => null)
+    ])
+    essenceData.value = essence
+    completenessData.value = completeness
+  } catch (e) {
+    console.error('加载本质数据失败:', e)
+  }
+}
+
+function selectAgent(id) {
+  selectedAgent.value = id
+  loadEssenceData(id)
+}
+
+function goToQuestionnaire() {
+  if (!selectedAgent.value) {
+    uni.showToast({ title: '请先选择数字人', icon: 'none' })
+    return
+  }
+  uni.navigateTo({
+    url: `/pages/refine/questionnaire?agentId=${selectedAgent.value}`
+  })
 }
 
 function initRecorder() {
@@ -357,6 +468,8 @@ async function startRefine() {
     if (result) {
       refineResult.value = result
       uni.showToast({ title: '炼化完成', icon: 'success' })
+      // 刷新本质数据
+      loadEssenceData(selectedAgent.value)
     }
   } catch (e) {
     uni.showToast({ title: '炼化失败: ' + (e.message || '未知错误'), icon: 'none' })
@@ -398,6 +511,118 @@ function goBack() { uni.navigateBack() }
 .refine-content { height: calc(100vh - 88rpx); }
 .section { padding: 0 30rpx; margin-bottom: 24rpx; }
 .section-title { display: block; padding: 24rpx 0 12rpx; font-size: $font-sm; color: var(--text-secondary); font-weight: 500; }
+
+/* 雷达图卡片 */
+.radar-card {
+  background: var(--card-bg);
+  border-radius: $radius-base;
+  padding: 16rpx;
+  box-shadow: $shadow-sm;
+}
+
+/* 炼化进度 */
+.progress-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.overall-percent {
+  font-size: $font-lg;
+  font-weight: bold;
+  color: $primary-color;
+}
+
+.progress-list {
+  background: var(--card-bg);
+  border-radius: $radius-base;
+  padding: 16rpx 24rpx;
+}
+
+.progress-item {
+  padding: 12rpx 0;
+}
+
+.progress-label {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8rpx;
+}
+
+.progress-name {
+  font-size: $font-sm;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.progress-check {
+  font-size: 28rpx;
+  margin-right: 8rpx;
+}
+
+.progress-percent {
+  font-size: $font-sm;
+  color: var(--text-secondary);
+  width: 60rpx;
+  text-align: right;
+}
+
+.progress-bar-bg {
+  height: 12rpx;
+  background: var(--bg-color);
+  border-radius: 6rpx;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  border-radius: 6rpx;
+  transition: width 0.6s ease;
+}
+
+/* 问卷入口 */
+.questionnaire-entry {
+  display: flex;
+  align-items: center;
+  padding: 24rpx;
+  background: var(--card-bg);
+  border-radius: $radius-base;
+  border: 2rpx solid $primary-color;
+  transition: all 0.2s;
+
+  &:active {
+    transform: scale(0.98);
+    background: $primary-50;
+  }
+}
+
+.entry-icon {
+  font-size: 48rpx;
+  margin-right: 20rpx;
+}
+
+.entry-info {
+  flex: 1;
+}
+
+.entry-title {
+  font-size: $font-base;
+  font-weight: 500;
+  color: var(--text-primary);
+  display: block;
+}
+
+.entry-desc {
+  font-size: $font-sm;
+  color: var(--text-secondary);
+  display: block;
+  margin-top: 4rpx;
+}
+
+.entry-arrow {
+  font-size: 32rpx;
+  color: $primary-color;
+}
 
 .agent-grid { display: flex; flex-wrap: wrap; gap: 16rpx; }
 .agent-card {
