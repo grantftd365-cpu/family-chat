@@ -1,6 +1,6 @@
 [Unit]
 Description=FamilyChat - 家庭数字人聊天服务
-After=network.target
+After=network.target network-online.target
 Wants=network-online.target
 
 [Service]
@@ -25,6 +25,7 @@ PrivateTmp=true
 # 资源限制
 LimitNOFILE=65536
 MemoryMax=1G
+CPUQuota=200%
 
 # 日志
 StandardOutput=journal
