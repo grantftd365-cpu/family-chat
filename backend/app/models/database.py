@@ -319,7 +319,8 @@ async def close_db():
 
 
 def gen_id() -> str:
-    return str(uuid.uuid4())[:12]
+    """生成唯一 ID（完整 UUID4，无截断，避免碰撞）"""
+    return str(uuid.uuid4())
 
 
 def now() -> float:

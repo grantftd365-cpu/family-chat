@@ -8,7 +8,14 @@ from jose import JWTError, jwt
 from fastapi import HTTPException, Depends, WebSocket, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-SECRET_KEY = os.getenv("SECRET_KEY", "family-chat-secret-key-change-in-production")
+SECRET_KEY = os.getenv("SECRET_KEY", "")
+if not SECRET_KEY:
+    raise RuntimeError(
+        "SECRET_KEY 环境变量未设置！\n"
+        "请在 .env 文件或环境变量中设置一个强密钥:\n"
+        "  SECRET_KEY=<至少32位随机字符串>\n"
+        "生成方法: python -c 'import secrets; print(secrets.token_hex(32))'"
+    )
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_DAYS = 30
 

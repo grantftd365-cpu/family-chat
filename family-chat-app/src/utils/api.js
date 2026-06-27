@@ -6,15 +6,26 @@
 import { getToken, removeToken, removeUserInfo } from './storage'
 
 /** 基础配置 */
+// 服务器地址：H5 模式使用相对路径，非 H5 从 manifest 配置或环境变量读取
+const _getServerUrl = () => {
+  // #ifdef H5
+  return ''
+  // #endif
+  // #ifndef H5
+  // 优先从 uni-app 的 manifest 配置读取
+  try {
+    const manifest = uni.getStorageSync('server_url')
+    if (manifest) return manifest
+  } catch (e) {}
+  // 从编译时常量读取（在 vite.config.js 中定义）
+  if (typeof __SERVER_URL__ !== 'undefined' && __SERVER_URL__) return __SERVER_URL__
+  // 开发环境默认值
+  return 'http://localhost:8000'
+  // #endif
+}
+
 const CONFIG = {
-  baseUrl: (() => {
-    // #ifdef H5
-    return ''
-    // #endif
-    // #ifndef H5
-    return 'http://localhost:8000'
-    // #endif
-  })(),
+  baseUrl: _getServerUrl(),
   timeout: 15000,
   maxRetries: 2,
   retryDelay: 1000,
@@ -502,6 +513,43 @@ export function refineFromChatHistory(data) {
   return post('/api/agents/refine/chat-history', data)
 }
 
+/** 从自我描述炼化 — 最深层数据源 */
+export function refineFromSelfDescription(agentId, answers) {
+  return post('/api/agents/refine/self-description', { agent_id: agentId, answers })
+}
+
+/** 获取炼化问卷模板 */
+export function getRefinementQuestionnaire() {
+  return get('/api/agents/refine/questionnaire')
+}
+
+/** 获取数字人七层本质 */
+export function getAgentEssence(agentId) {
+  return get(`/api/agents/refine/essence/${agentId}`)
+}
+
+/** 获取炼化完成度 */
+export function getRefinementCompleteness(agentId) {
+  return get(`/api/agents/refine/completeness/${agentId}`)
+}
+
+/** 获取炼化历史 */
+export function getRefinementHistory(agentId, limit = 20) {
+  return get(`/api/agents/refine/history/${agentId}`, { limit })
+}
+
+/* ========== 微信 OAuth ========== */
+
+/** 获取微信 OAuth 授权 URL */
+export function getWxOAuthUrl(redirectUri) {
+  return get('/api/wx/oauth/url', { redirect_uri: redirectUri })
+}
+
+/** 微信 OAuth 登录 */
+export function wxOAuthLogin(code) {
+  return post('/api/wx/oauth/login', { code })
+}
+
 
 export default {
   register,
@@ -548,5 +596,12 @@ export default {
   refineFromVoice,
   refineFromVideo,
   refineFromDocument,
-  refineFromChatHistory
+  refineFromChatHistory,
+  refineFromSelfDescription,
+  getRefinementQuestionnaire,
+  getAgentEssence,
+  getRefinementCompleteness,
+  getRefinementHistory,
+  getWxOAuthUrl,
+  wxOAuthLogin
 }

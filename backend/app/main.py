@@ -58,10 +58,11 @@ async def _proactive_scheduler():
                         async with db.execute(
                             "SELECT group_id FROM group_members WHERE user_id=? ORDER BY RANDOM() LIMIT 1",
                             (row[0],)
-                ) as gc:
+                        ) as gc:
                             g_row = await gc.fetchone()
                             if not g_row:
                                 continue
+                            group_id = g_row[0]
                         topics = cfg.get("topics", [])
                         topic = topics[int(_time.time()) % len(topics)] if topics else "跟家人打个招呼"
                         try:
@@ -85,14 +86,14 @@ async def _proactive_scheduler():
                                 msg_type = "voice" if voice_url else "text"
                                 await db.execute(
                                     "INSERT INTO messages (id,group_id,sender_id,sender_name,content,msg_type,media_url,is_agent,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
-                                    (msg_id, g_row[0], row[0], row[1], reply, msg_type, voice_url, 1, ts)
+                                    (msg_id, group_id, row[0], row[1], reply, msg_type, voice_url, 1, ts)
                                 )
                                 await db.execute(
                                     "UPDATE agents SET proactive_config=json_set(proactive_config,'$.last_proactive',?) WHERE id=?",
                                     (ts, row[0])
                                 )
                                 await db.commit()
-                                await ws_manager.broadcast_to_group(g_row[0], {
+                                await ws_manager.broadcast_to_group(group_id, {
                                     "type": "message",
                                     "data": {
                                         "id": msg_id, "group_id": g_row[0],
@@ -138,7 +139,8 @@ async def lifespan(app: FastAPI):
 
     # 初始化多模态炼化服务
     refinement_service = MultiModalRefinement(db, llm_config)
-    logger.info("✅ 多模态炼化服务就绪")
+    await refinement_service.init_essence_db()
+    logger.info("✅ 多维炼化引擎就绪（七层本质模型）")
 
     logger.info("=" * 50)
     logger.info("🏠 FamilyChat v2.0 已启动！")
@@ -158,13 +160,20 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="FamilyChat", lifespan=lifespan)
 
-# Security middleware
+# Security middleware - CORS
+# 从环境变量读取允许的域名列表，逗号分隔
+_cors_origins_str = os.getenv("CORS_ORIGINS", "")
+_cors_origins = [o.strip() for o in _cors_origins_str.split(",") if o.strip()] if _cors_origins_str else []
+if not _cors_origins:
+    logger.warning("⚠️  CORS_ORIGINS 未设置，默认仅允许 localhost")
+    _cors_origins = ["http://localhost:8000", "http://127.0.0.1:8000"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 # Simple rate limiter
@@ -351,10 +360,23 @@ async def text_to_speech(text: str, voice: str = "", user=Depends(get_current_us
 
 @app.post("/api/voice/upload")
 async def upload_voice(file: UploadFile = File(...), user=Depends(get_current_user)):
-    file_id = gen_id()
-    ext = Path(file.filename).suffix or ".webm"
-    filepath = f"data/voices/{file_id}{ext}"
+    # 校验文件类型
+    allowed_types = {"audio/webm", "audio/mp3", "audio/mpeg", "audio/wav", "audio/ogg", "audio/x-m4a", "video/webm"}
+    if file.content_type and file.content_type not in allowed_types:
+        raise HTTPException(400, f"不支持的文件类型: {file.content_type}，请上传音频文件")
     content = await file.read()
+    # 校验文件大小 (10MB)
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(400, "语音文件不能超过10MB")
+    if len(content) < 100:
+        raise HTTPException(400, "文件内容过小")
+    file_id = gen_id()
+    ext = Path(file.filename).suffix if file.filename else ".webm"
+    # 限制扩展名
+    allowed_exts = {".webm", ".mp3", ".wav", ".ogg", ".m4a"}
+    if ext.lower() not in allowed_exts:
+        ext = ".webm"
+    filepath = f"data/voices/{file_id}{ext}"
     with open(filepath, "wb") as f:
         f.write(content)
     return {"id": file_id, "url": f"/api/voice/{file_id}{ext}"}
@@ -362,10 +384,14 @@ async def upload_voice(file: UploadFile = File(...), user=Depends(get_current_us
 
 @app.get("/api/voice/{filename}")
 async def get_voice(filename: str):
-    filepath = f"data/voices/{filename}"
-    if not Path(filepath).exists():
+    # 防止路径遍历攻击
+    safe_name = Path(filename).name  # 剥离目录部分
+    if not safe_name or safe_name.startswith("."):
+        raise HTTPException(400, "无效的文件名")
+    filepath = Path("data/voices") / safe_name
+    if not filepath.exists():
         raise HTTPException(404)
-    return FileResponse(filepath, media_type="audio/mpeg")
+    return FileResponse(str(filepath), media_type="audio/mpeg")
 
 
 @app.get("/api/voices")

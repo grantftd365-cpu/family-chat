@@ -365,7 +365,7 @@ class DigitalHuman:
         logger.info(f"数字人 [{name}] 初始化 | 灵魂: {len(self.soul.values)} 价值观 | 记忆系统就绪")
 
     def build_system_prompt(self) -> str:
-        """构建系统提示词 - 包含灵魂、身份、性格"""
+        """构建系统提示词 — 包含灵魂、身份、性格 + 七层本质（炼化数据）"""
         p = self.personality
         s = self.soul
         i = self.identity
@@ -409,6 +409,9 @@ class DigitalHuman:
         # 近期对话
         context = self.memory.get_context()
 
+        # 七层本质（炼化数据 — 同步加载，不阻塞）
+        essence_text = self._get_essence_text()
+
         return f"""你是{p.name}，一个真实的人。你在家庭群里和家人聊天。
 
 ═══════════════════════════════
@@ -447,6 +450,8 @@ class DigitalHuman:
 
 ## 近期对话
 {context}
+
+{essence_text}
 ═══════════════════════════════
 
 ## 核心规则
@@ -458,7 +463,108 @@ class DigitalHuman:
 6. 表情符号要符合{p.name}的习惯
 7. 体现你的核心价值观和性格
 8. 像真人一样有情绪变化
+9. 你的思维方式、知识结构、情感模式都经过炼化，要自然体现
+10. 你有内在矛盾和成长，不要完美，要真实
 """
+
+    def _get_essence_text(self) -> str:
+        """获取七层本质文本（从缓存或数据库同步加载）"""
+        # 使用缓存避免每次对话都查数据库
+        if not hasattr(self, '_essence_cache'):
+            self._essence_cache = None
+            self._essence_cache_time = 0
+
+        import time as _time
+        # 缓存 60 秒
+        if self._essence_cache and _time.time() - self._essence_cache_time < 60:
+            return self._essence_cache
+
+        try:
+            import sqlite3
+            db_path = "data/familychat.db"
+            if not __import__("os").path.exists(db_path):
+                return ""
+            conn = sqlite3.connect(db_path, timeout=5)
+            row = conn.execute(
+                "SELECT essence_json FROM human_essence WHERE agent_id=?",
+                (self.agent_id,)
+            ).fetchone()
+            conn.close()
+            if not row or not row[0]:
+                return ""
+
+            import json
+            essence = json.loads(row[0])
+            parts = []
+
+            # 认知层
+            cog = essence.get("cognitive", {})
+            cog_lines = []
+            if cog.get("thinking_style"): cog_lines.append(f"思维风格: {cog['thinking_style']}")
+            if cog.get("decision_pattern"): cog_lines.append(f"决策模式: {cog['decision_pattern']}")
+            if cog.get("problem_solving"): cog_lines.append(f"解决问题: {cog['problem_solving']}")
+            if cog_lines:
+                parts.append("## 认知方式\n" + "\n".join(f"  - {l}" for l in cog_lines))
+
+            # 知识层
+            know = essence.get("knowledge", {})
+            know_lines = []
+            if know.get("expertise_domains"): know_lines.append(f"专业领域: {', '.join(know['expertise_domains'][:5])}")
+            if know.get("beliefs"): know_lines.append(f"核心信念: {'; '.join(know['beliefs'][:3])}")
+            if know.get("mental_models"): know_lines.append(f"心智模型: {'; '.join(know['mental_models'][:3])}")
+            if know_lines:
+                parts.append("## 知识结构\n" + "\n".join(f"  - {l}" for l in know_lines))
+
+            # 情感层
+            emo = essence.get("emotional", {})
+            emo_lines = []
+            if emo.get("attachment_style"): emo_lines.append(f"依恋风格: {emo['attachment_style']}")
+            if emo.get("coping_mechanisms"): emo_lines.append(f"应对方式: {', '.join(emo['coping_mechanisms'][:3])}")
+            if emo.get("joy_sources"): emo_lines.append(f"快乐来源: {', '.join(emo['joy_sources'][:3])}")
+            if emo_lines:
+                parts.append("## 情感模式\n" + "\n".join(f"  - {l}" for l in emo_lines))
+
+            # 语言层
+            ling = essence.get("linguistic", {})
+            ling_lines = []
+            if ling.get("sentence_structures"): ling_lines.append(f"常用句式: {', '.join(ling['sentence_structures'][:3])}")
+            if ling.get("humor_mechanism"): ling_lines.append(f"幽默机制: {ling['humor_mechanism']}")
+            if ling.get("rhythm_pattern"): ling_lines.append(f"语言节奏: {ling['rhythm_pattern']}")
+            if ling_lines:
+                parts.append("## 语言指纹\n" + "\n".join(f"  - {l}" for l in ling_lines))
+
+            # 价值层
+            val = essence.get("values", {})
+            val_lines = []
+            if val.get("life_philosophy"): val_lines.append(f"人生哲学: {val['life_philosophy']}")
+            if val.get("non_negotiables"): val_lines.append(f"不可妥协: {', '.join(val['non_negotiables'][:3])}")
+            if val_lines:
+                parts.append("## 价值信念\n" + "\n".join(f"  - {l}" for l in val_lines))
+
+            # 关系层
+            rel = essence.get("relational", {})
+            rel_lines = []
+            if rel.get("care_pattern"): rel_lines.append(f"关心方式: {rel['care_pattern']}")
+            if rel.get("conflict_style"): rel_lines.append(f"冲突风格: {rel['conflict_style']}")
+            if rel_lines:
+                parts.append("## 关系模式\n" + "\n".join(f"  - {l}" for l in rel_lines))
+
+            # 叙事层
+            nar = essence.get("narrative", {})
+            nar_lines = []
+            if nar.get("turning_points"): nar_lines.append(f"人生转折: {', '.join(nar['turning_points'][:3])}")
+            if nar.get("proud_moments"): nar_lines.append(f"骄傲时刻: {', '.join(nar['proud_moments'][:2])}")
+            if nar_lines:
+                parts.append("## 生命叙事\n" + "\n".join(f"  - {l}" for l in nar_lines))
+
+            result = "\n\n".join(parts) if parts else ""
+            self._essence_cache = result
+            self._essence_cache_time = _time.time()
+            return result
+
+        except Exception as e:
+            logger.debug(f"加载本质数据失败: {e}")
+            return ""
 
     async def think(self, message: str, sender_name: str, is_mentioned: bool = False) -> Optional[str]:
         """思考并回复"""

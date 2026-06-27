@@ -72,7 +72,17 @@ async def download_backup(filename: str, user=Depends(get_current_user)):
 
 @router.post("/restore")
 async def restore_backup(file: UploadFile = File(...), user=Depends(get_current_user)):
-    """从备份恢复"""
+    """从备份恢复 - 仅限管理员"""
+    # 权限校验：只有 admin 角色可以恢复备份
+    db_check = await get_db()
+    try:
+        async with db_check.execute("SELECT role FROM users WHERE id=?", (user["user_id"],)) as c:
+            row = await c.fetchone()
+            if not row or row[0] != "admin":
+                raise HTTPException(403, "仅管理员可以恢复备份")
+    finally:
+        await db_check.close()
+
     content = await file.read()
     if len(content) < 100:
         raise HTTPException(400, "无效的备份文件")

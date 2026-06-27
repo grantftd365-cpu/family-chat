@@ -152,14 +152,18 @@ async def create_group(req: CreateGroupReq, user=Depends(get_current_user)):
 async def get_group(group_id: str, user=Depends(get_current_user)):
     db = await get_db()
     try:
-        async with db.execute("SELECT * FROM groups WHERE id=?", (group_id,)) as c:
+        # 使用具名列名，避免 SELECT * 导致索引错位
+        async with db.execute(
+            "SELECT id, name, avatar, owner_id, description, announcement, mute_all FROM groups WHERE id=?",
+            (group_id,)
+        ) as c:
             row = await c.fetchone()
             if not row:
                 raise HTTPException(404, "群不存在")
             return {
                 "id": row[0], "name": row[1], "avatar": row[2],
                 "owner_id": row[3], "description": row[4],
-                "announcement": row[6] or "", "mute_all": bool(row[7]),
+                "announcement": row[5] or "", "mute_all": bool(row[6]),
             }
     finally:
         await db.close()
@@ -169,6 +173,16 @@ async def get_group(group_id: str, user=Depends(get_current_user)):
 async def update_group(group_id: str, req: UpdateGroupReq, user=Depends(get_current_user)):
     db = await get_db()
     try:
+        # 权限校验：只有群主/管理员可以修改群信息
+        async with db.execute(
+            "SELECT role FROM group_members WHERE group_id=? AND user_id=?",
+            (group_id, user["user_id"])
+        ) as c:
+            row = await c.fetchone()
+            if not row:
+                raise HTTPException(403, "你不是群成员")
+            if row[0] not in ("owner", "admin"):
+                raise HTTPException(403, "只有群主或管理员可以修改群信息")
         updates, params = [], []
         if req.name:
             updates.append("name=?"); params.append(req.name)
@@ -223,6 +237,16 @@ async def group_members(group_id: str, user=Depends(get_current_user)):
 async def add_group_member(group_id: str, req: AddGroupMemberReq, user=Depends(get_current_user)):
     db = await get_db()
     try:
+        # 权限校验：只有群主/管理员可以邀请成员
+        async with db.execute(
+            "SELECT role FROM group_members WHERE group_id=? AND user_id=?",
+            (group_id, user["user_id"])
+        ) as c:
+            caller_row = await c.fetchone()
+            if not caller_row:
+                raise HTTPException(403, "你不是群成员")
+            if caller_row[0] not in ("owner", "admin"):
+                raise HTTPException(403, "只有群主或管理员可以邀请成员")
         await db.execute(
             "INSERT OR IGNORE INTO group_members (group_id,user_id,role,joined_at) VALUES (?,?,?,?)",
             (group_id, req.user_id, req.role, now())
@@ -237,6 +261,27 @@ async def add_group_member(group_id: str, req: AddGroupMemberReq, user=Depends(g
 async def remove_group_member(group_id: str, user_id: str, user=Depends(get_current_user)):
     db = await get_db()
     try:
+        # 权限校验：只有群主可以踢人
+        async with db.execute(
+            "SELECT role FROM group_members WHERE group_id=? AND user_id=?",
+            (group_id, user["user_id"])
+        ) as c:
+            caller_row = await c.fetchone()
+            if not caller_row:
+                raise HTTPException(403, "你不是群成员")
+            if caller_row[0] not in ("owner", "admin"):
+                raise HTTPException(403, "只有群主或管理员可以移除成员")
+        # 不能踢自己
+        if user_id == user["user_id"]:
+            raise HTTPException(400, "不能移除自己，请使用退出群聊")
+        # 不能踢群主
+        async with db.execute(
+            "SELECT role FROM group_members WHERE group_id=? AND user_id=?",
+            (group_id, user_id)
+        ) as c:
+            target_row = await c.fetchone()
+            if target_row and target_row[0] == "owner":
+                raise HTTPException(403, "不能移除群主")
         await db.execute("DELETE FROM group_members WHERE group_id=? AND user_id=?", (group_id, user_id))
         await db.commit()
         return {"status": "ok"}
@@ -492,6 +537,17 @@ async def forward_message(req: ForwardReq, user=Depends(get_current_user)):
 async def pin_message(message_id: str, user=Depends(get_current_user)):
     db = await get_db()
     try:
+        # 权限校验：必须是群成员才能置顶
+        async with db.execute("SELECT group_id FROM messages WHERE id=?", (message_id,)) as c:
+            msg_row = await c.fetchone()
+            if not msg_row:
+                raise HTTPException(404, "消息不存在")
+        async with db.execute(
+            "SELECT 1 FROM group_members WHERE group_id=? AND user_id=?",
+            (msg_row[0], user["user_id"])
+        ) as c:
+            if not await c.fetchone():
+                raise HTTPException(403, "你不是该群成员")
         await db.execute("UPDATE messages SET pinned=1 WHERE id=?", (message_id,))
         await db.commit()
         return {"status": "ok"}
@@ -653,7 +709,25 @@ async def upload_image(file: UploadFile = File(...), user=Depends(get_current_us
     content = await file.read()
     if len(content) > 10 * 1024 * 1024:
         raise HTTPException(400, "图片不能超过10MB")
-    ext = Path(file.filename).suffix or ".jpg"
+    if len(content) < 100:
+        raise HTTPException(400, "文件内容过小")
+    # Magic bytes 校验：验证文件确实是图片
+    image_signatures = {
+        b"\xff\xd8\xff": ".jpg",
+        b"\x89PNG": ".png",
+        b"GIF8": ".gif",
+        b"RIFF": ".webp",  # WebP starts with RIFF
+    }
+    detected_ext = None
+    for sig, ext in image_signatures.items():
+        if content[:len(sig)] == sig:
+            detected_ext = ext
+            break
+    if not detected_ext:
+        raise HTTPException(400, "文件内容不是有效的图片格式")
+    ext = Path(file.filename).suffix if file.filename else detected_ext
+    if ext.lower() not in {".jpg", ".jpeg", ".png", ".gif", ".webp"}:
+        ext = detected_ext
     filepath = f"data/uploads/{gen_id()}{ext}"
     with open(filepath, "wb") as f:
         f.write(content)
@@ -678,8 +752,12 @@ async def upload_file(file: UploadFile = File(...), user=Depends(get_current_use
 
 @router.get("/uploads/{filename}")
 async def get_upload(filename: str):
-    filepath = f"data/uploads/{filename}"
-    if not Path(filepath).exists():
+    # 防止路径遍历攻击
+    safe_name = Path(filename).name
+    if not safe_name or safe_name.startswith("."):
+        raise HTTPException(400, "无效的文件名")
+    filepath = Path("data/uploads") / safe_name
+    if not filepath.exists():
         raise HTTPException(404)
     ext = Path(filename).suffix.lower()
     types = {

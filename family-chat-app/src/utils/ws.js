@@ -39,7 +39,16 @@ class WsClient {
     return `${protocol}//${location.host}/ws?token=${token}`
     // #endif
     // #ifndef H5
-    return `ws://localhost:8000/ws?token=${token}`
+    // 从存储或编译时常量读取服务器地址
+    let serverUrl = 'http://localhost:8000'
+    try {
+      const stored = uni.getStorageSync('server_url')
+      if (stored) serverUrl = stored
+    } catch (e) {}
+    if (typeof __SERVER_URL__ !== 'undefined' && __SERVER_URL__) serverUrl = __SERVER_URL__
+    // 将 http(s) 转为 ws(s)
+    const wsUrl = serverUrl.replace(/^https?:\/\//, (m) => m === 'https://' ? 'wss://' : 'ws://')
+    return `${wsUrl}/ws?token=${token}`
     // #endif
   }
 

@@ -30,14 +30,19 @@ async def list_moments(before: float = 0, limit: int = 20, user=Depends(get_curr
                 friend_ids.append(row[0])
 
         placeholders = ",".join("?" * len(friend_ids))
+        # 使用具名列名，避免 SELECT * 导致索引错位
         if before > 0:
-            sql = f"""SELECT m.*, u.nickname, u.avatar, u.avatar_url
+            sql = f"""SELECT m.id, m.user_id, m.content, m.images, m.location,
+                             m.visibility, m.like_count, m.comment_count, m.created_at,
+                             u.nickname, u.avatar, u.avatar_url
                       FROM moments m JOIN users u ON m.user_id=u.id
                       WHERE m.user_id IN ({placeholders}) AND m.created_at<?
                       ORDER BY m.created_at DESC LIMIT ?"""
             params = (*friend_ids, before, limit)
         else:
-            sql = f"""SELECT m.*, u.nickname, u.avatar, u.avatar_url
+            sql = f"""SELECT m.id, m.user_id, m.content, m.images, m.location,
+                             m.visibility, m.like_count, m.comment_count, m.created_at,
+                             u.nickname, u.avatar, u.avatar_url
                       FROM moments m JOIN users u ON m.user_id=u.id
                       WHERE m.user_id IN ({placeholders})
                       ORDER BY m.created_at DESC LIMIT ?"""
@@ -68,7 +73,7 @@ async def list_moments(before: float = 0, limit: int = 20, user=Depends(get_curr
                 my_like = any(l["user_id"] == user["user_id"] for l in likes)
 
                 moments.append({
-                    "id": mid, "user_id": row[1], "content": row[2],
+                    "id": row[0], "user_id": row[1], "content": row[2],
                     "images": json.loads(row[3]) if row[3] else [],
                     "location": row[4], "like_count": row[6], "comment_count": row[7],
                     "created_at": row[8],
@@ -168,8 +173,26 @@ async def upload_moment_image(file: UploadFile = File(...), user=Depends(get_cur
     content = await file.read()
     if len(content) > 10 * 1024 * 1024:
         raise HTTPException(400, "图片不能超过10MB")
+    if len(content) < 100:
+        raise HTTPException(400, "文件内容过小")
+    # Magic bytes 校验
+    image_signatures = {
+        b"\xff\xd8\xff": ".jpg",
+        b"\x89PNG": ".png",
+        b"GIF8": ".gif",
+        b"RIFF": ".webp",
+    }
+    detected_ext = None
+    for sig, ext in image_signatures.items():
+        if content[:len(sig)] == sig:
+            detected_ext = ext
+            break
+    if not detected_ext:
+        raise HTTPException(400, "文件内容不是有效的图片格式")
     from pathlib import Path
-    ext = Path(file.filename).suffix or ".jpg"
+    ext = Path(file.filename).suffix if file.filename else detected_ext
+    if ext.lower() not in {".jpg", ".jpeg", ".png", ".gif", ".webp"}:
+        ext = detected_ext
     filepath = f"data/uploads/moment_{gen_id()}{ext}"
     with open(filepath, "wb") as f:
         f.write(content)
