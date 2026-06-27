@@ -129,9 +129,24 @@
 import { ref, computed } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import * as api from '../../utils/api'
+import { normalizeQuestionnaire, normalizeCompleteness } from '../../utils/response'
 
 const statusBarHeight = ref(44)
 const agentId = ref('')
+
+const DEFAULT_QUESTIONS = [
+  { id: 'q1', question: '你最看重的人生信条是什么？它如何影响你的日常决策？', placeholder: '例如：己所不欲勿施于人...' },
+  { id: 'q2', question: '描述一个对你影响最深的人，他/她教会了你什么？', placeholder: '例如：我的母亲教会我...' },
+  { id: 'q3', question: '你最擅长用什么方式表达情感？（语言、行动、文字等）', placeholder: '例如：我习惯用文字表达...' },
+  { id: 'q4', question: '在与人交流时，你最常使用哪些口头禅或表达习惯？', placeholder: '例如：我经常说“其实吧”...' },
+  { id: 'q5', question: '你认为什么是最珍贵的家庭关系？为什么？', placeholder: '例如：我认为相互理解...' },
+  { id: 'q6', question: '描述你最难忘的一段经历，它如何塑造了现在的你？', placeholder: '例如：小时候...' },
+  { id: 'q7', question: '你在面对困难时通常会怎么想、怎么做？', placeholder: '例如：我会先冷静分析...' },
+  { id: 'q8', question: '你最喜欢的话题是什么？和谁聊这些话题最开心？', placeholder: '例如：我喜欢聊历史...' },
+  { id: 'q9', question: '如果用三个词来形容你的说话风格，会是什么？', placeholder: '例如：幽默、直接、温和...' },
+  { id: 'q10', question: '你希望别人怎样记住你？你留给他人的印象是什么？', placeholder: '例如：我希望别人记住我是一个...' }
+]
+
 const questions = ref([])
 const answers = ref({})
 const loading = ref(true)
@@ -164,7 +179,8 @@ const compareDimensions = computed(() => {
     { key: 'relation', label: '关系' },
     { key: 'narrative', label: '叙事' }
   ]
-  const after = result.value.completeness || result.value.essence || {}
+  const raw = result.value.completeness || result.value.essence || result.value.scores || result.value
+  const after = normalizeCompleteness(raw)
   const before = beforeCompleteness.value || {}
   return dims.map(d => ({
     ...d,
@@ -187,16 +203,8 @@ onLoad(async (options) => {
 async function loadQuestionnaire() {
   loading.value = true
   try {
-    const res = await api.getRefinementQuestionnaire()
-    // 支持多种返回格式
-    if (Array.isArray(res)) {
-      questions.value = res
-    } else if (res.questions) {
-      questions.value = res.questions
-    } else if (res.data) {
-      questions.value = Array.isArray(res.data) ? res.data : res.data.questions || []
-    }
-    // 如果 API 没有返回问题，使用默认问题
+    const res = await api.getRefinementQuestionnaire().catch(() => null)
+    questions.value = normalizeQuestionnaire(res)
     if (!questions.value.length) {
       questions.value = [
         { id: 'q1', question: '你最看重的人生信条是什么？它如何影响你的日常决策？', placeholder: '例如：己所不欲勿施于人...' },
@@ -212,20 +220,7 @@ async function loadQuestionnaire() {
       ]
     }
   } catch (e) {
-    console.error('加载问卷失败:', e)
-    // 使用默认问卷
-    questions.value = [
-      { id: 'q1', question: '你最看重的人生信条是什么？它如何影响你的日常决策？' },
-      { id: 'q2', question: '描述一个对你影响最深的人，他/她教会了你什么？' },
-      { id: 'q3', question: '你最擅长用什么方式表达情感？（语言、行动、文字等）' },
-      { id: 'q4', question: '在与人交流时，你最常使用哪些口头禅或表达习惯？' },
-      { id: 'q5', question: '你认为什么是最珍贵的家庭关系？为什么？' },
-      { id: 'q6', question: '描述你最难忘的一段经历，它如何塑造了现在的你？' },
-      { id: 'q7', question: '你在面对困难时通常会怎么想、怎么做？' },
-      { id: 'q8', question: '你最喜欢的话题是什么？和谁聊这些话题最开心？' },
-      { id: 'q9', question: '如果用三个词来形容你的说话风格，会是什么？' },
-      { id: 'q10', question: '你希望别人怎样记住你？你留给他人的印象是什么？' }
-    ]
+    questions.value = DEFAULT_QUESTIONS
   } finally {
     loading.value = false
   }
@@ -233,7 +228,8 @@ async function loadQuestionnaire() {
 
 async function loadBeforeCompleteness() {
   try {
-    beforeCompleteness.value = await api.getRefinementCompleteness(agentId.value)
+    const res = await api.getRefinementCompleteness(agentId.value).catch(() => null)
+    beforeCompleteness.value = normalizeCompleteness(res)
   } catch (e) {
     console.error('加载完成度失败:', e)
   }
@@ -252,7 +248,7 @@ async function submitQuestionnaire() {
     const answersList = questions.value.map((q, i) => ({
       question: q.question || q.label || q,
       answer: answers.value[q.id || i] || ''
-    })).filter(a => a.answer.trim())
+    })).filter(a => a.answer && a.answer.trim())
 
     const res = await api.refineFromSelfDescription(agentId.value, answersList)
     result.value = res

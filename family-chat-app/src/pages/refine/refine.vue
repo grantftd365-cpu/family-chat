@@ -260,6 +260,7 @@
 import { ref, computed } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import * as api from '../utils/api'
+import { normalizeList, normalizeEssence, normalizeCompleteness } from '../utils/response'
 import EssenceRadar from '../../components/essence-radar.vue'
 
 const statusBarHeight = ref(44)
@@ -328,11 +329,11 @@ onLoad(() => {
 async function loadData() {
   try {
     const [agentsRes, groupsRes] = await Promise.all([
-      api.getAgents(),
-      api.getGroups()
+      api.getAgents().catch(() => []),
+      api.getGroups().catch(() => [])
     ])
-    agents.value = Array.isArray(agentsRes) ? agentsRes : (agentsRes.agents || [])
-    groups.value = Array.isArray(groupsRes) ? groupsRes : (groupsRes.groups || [])
+    agents.value = normalizeList(agentsRes, [])
+    groups.value = normalizeList(groupsRes, [])
     if (agents.value.length) {
       selectedAgent.value = agents.value[0].id
       loadEssenceData(agents.value[0].id)
@@ -345,12 +346,12 @@ async function loadData() {
 async function loadEssenceData(agentId) {
   if (!agentId) return
   try {
-    const [essence, completeness] = await Promise.all([
+    const [essenceRes, completenessRes] = await Promise.all([
       api.getAgentEssence(agentId).catch(() => null),
       api.getRefinementCompleteness(agentId).catch(() => null)
     ])
-    essenceData.value = essence
-    completenessData.value = completeness
+    essenceData.value = normalizeEssence(essenceRes)
+    completenessData.value = normalizeCompleteness(completenessRes)
   } catch (e) {
     console.error('加载本质数据失败:', e)
   }

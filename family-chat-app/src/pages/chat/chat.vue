@@ -36,7 +36,7 @@
       </view>
       <text class="search-cancel" @tap="toggleSearch">取消</text>
       <view v-if="searchResults.length > 0" class="search-results">
-        <text class="search-count">找到 {{ searchResults.length }} 条结果</text>
+        <text class="search-count">找到 {{ searchResults.length }}{{ searchResults.length >= SEARCH_RESULT_LIMIT ? '+' : '' }} 条结果</text>
         <scroll-view scroll-y class="search-results-list">
           <view
             v-for="result in searchResults"
@@ -371,6 +371,7 @@ import { useChatStore } from '../../stores/chat'
 import { getDraft, setDraft } from '../../utils/storage'
 import ws from '../../utils/ws'
 import * as api from '../../utils/api'
+import { normalizeReactions } from '../../utils/response'
 
 const userStore = useUserStore()
 const chatStore = useChatStore()
@@ -405,6 +406,8 @@ const searchKeyword = ref('')
 const searchResults = ref([])
 const searching = ref(false)
 const highlightMsgId = ref(null)
+const SEARCH_RESULT_LIMIT = 200
+const reactingMsgId = ref(null) // 防并发锁
 
 // 快速表情回应
 const quickReactMsgId = ref(null)
@@ -421,10 +424,11 @@ const messages = computed(() => chatStore.messagesMap[groupId.value] || [])
 const filteredMessages = computed(() => {
   if (!showSearch.value || !searchKeyword.value.trim()) return messages.value
   const kw = searchKeyword.value.trim().toLowerCase()
-  return messages.value.filter(m => {
+  const result = messages.value.filter(m => {
     if (!m.content) return false
     return m.content.toLowerCase().includes(kw)
   })
+  return result.slice(0, SEARCH_RESULT_LIMIT)
 })
 const unreadTotal = computed(() => {
   let total = 0
@@ -459,6 +463,9 @@ onLoad((options) => {
   ws.on('typing', onWsTyping)
   ws.on('recall', onWsRecall)
   ws.on('reaction', onWsReaction)
+  ws.on('reaction_v2', onWsReaction)
+  // 断线重连后重新同步消息
+  ws.on('connected', onWsReconnected)
 
   // 初始化录音
   initRecorder()
@@ -472,6 +479,8 @@ onUnload(() => {
   ws.off('typing', onWsTyping)
   ws.off('recall', onWsRecall)
   ws.off('reaction', onWsReaction)
+  ws.off('reaction_v2', onWsReaction)
+  ws.off('connected', onWsReconnected)
   if (typingTimer) clearTimeout(typingTimer)
 })
 
@@ -554,21 +563,37 @@ function onWsRecall(data) {
 }
 
 function onWsReaction(data) {
-  // 支持 v2 格式
+  if (!data || !data.message_id) return
   const msg = messages.value.find(m => m.id === data.message_id)
-  if (msg) {
-    if (!msg.reactions) msg.reactions = {}
-    if (data.action === 'remove') {
-      if (msg.reactions[data.emoji]) {
-        const idx = msg.reactions[data.emoji].indexOf(data.user_id)
-        if (idx > -1) msg.reactions[data.emoji].splice(idx, 1)
-        if (msg.reactions[data.emoji].length === 0) delete msg.reactions[data.emoji]
-      }
-    } else {
-      if (!msg.reactions[data.emoji]) msg.reactions[data.emoji] = []
-      if (!msg.reactions[data.emoji].includes(data.user_id)) {
-        msg.reactions[data.emoji].push(data.user_id)
-      }
+  if (!msg) return
+  if (!msg.reactions) msg.reactions = {}
+  // 标准化：确保是 {emoji: [uid]} 格式
+  if (Array.isArray(msg.reactions)) {
+    msg.reactions = normalizeReactions(msg.reactions)
+  }
+  const action = data.action || 'add'
+  const uid = data.user_id || data.userId
+  if (action === 'remove') {
+    if (msg.reactions[data.emoji]) {
+      const idx = msg.reactions[data.emoji].indexOf(uid)
+      if (idx > -1) msg.reactions[data.emoji].splice(idx, 1)
+      if (msg.reactions[data.emoji].length === 0) delete msg.reactions[data.emoji]
+    }
+  } else {
+    if (!msg.reactions[data.emoji]) msg.reactions[data.emoji] = []
+    if (uid && !msg.reactions[data.emoji].includes(uid)) {
+      msg.reactions[data.emoji].push(uid)
+    }
+  }
+}
+
+// 断线重连后重新加载消息
+async function onWsReconnected() {
+  if (groupId.value) {
+    try {
+      await chatStore.loadMessages(groupId.value)
+    } catch (e) {
+      console.error('重连后同步消息失败:', e)
     }
   }
 }
@@ -944,16 +969,21 @@ function onMsgLongPress(msg) {
 
 async function sendQuickReaction(msg, emoji) {
   quickReactMsgId.value = null
+  if (reactingMsgId.value === msg.id) return // 防并发
+  reactingMsgId.value = msg.id
   try {
     await api.addReactionV2(msg.id, emoji)
-    // 更新本地反应数据
     if (!msg.reactions) msg.reactions = {}
+    if (Array.isArray(msg.reactions)) msg.reactions = normalizeReactions(msg.reactions)
     if (!msg.reactions[emoji]) msg.reactions[emoji] = []
-    if (!msg.reactions[emoji].includes(currentUserId.value)) {
+    if (currentUserId.value && !msg.reactions[emoji].includes(currentUserId.value)) {
       msg.reactions[emoji].push(currentUserId.value)
     }
   } catch (e) {
     console.error('表情回应失败:', e)
+    uni.showToast({ title: '操作失败', icon: 'none', duration: 1500 })
+  } finally {
+    reactingMsgId.value = null
   }
 }
 
@@ -985,27 +1015,33 @@ function formatMsgTime(time) {
 function hasReactions(msg) {
   if (!msg.reactions) return false
   if (Array.isArray(msg.reactions)) return msg.reactions.length > 0
-  return Object.keys(msg.reactions).length > 0
+  if (typeof msg.reactions === 'object') return Object.keys(msg.reactions).length > 0
+  return false
 }
 
 async function toggleReaction(msg, emoji) {
+  if (reactingMsgId.value) return // 防并发
+  reactingMsgId.value = msg.id
   try {
-    const users = msg.reactions?.[emoji] || []
-    if (users.includes(currentUserId.value)) {
-      // 取消反应
+    if (!msg.reactions) msg.reactions = {}
+    if (Array.isArray(msg.reactions)) msg.reactions = normalizeReactions(msg.reactions)
+    const users = msg.reactions[emoji] || []
+    const isMine = users.includes(currentUserId.value)
+    if (isMine) {
       await api.removeReactionV2(msg.id, emoji)
       const idx = users.indexOf(currentUserId.value)
       if (idx > -1) users.splice(idx, 1)
       if (users.length === 0) delete msg.reactions[emoji]
     } else {
-      // 添加反应
       await api.addReactionV2(msg.id, emoji)
-      if (!msg.reactions) msg.reactions = {}
       if (!msg.reactions[emoji]) msg.reactions[emoji] = []
-      msg.reactions[emoji].push(currentUserId.value)
+      if (currentUserId.value) msg.reactions[emoji].push(currentUserId.value)
     }
   } catch (e) {
     console.error('反应失败:', e)
+    uni.showToast({ title: '操作失败', icon: 'none', duration: 1500 })
+  } finally {
+    reactingMsgId.value = null
   }
 }
 
