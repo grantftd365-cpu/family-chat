@@ -22,8 +22,12 @@
       <text v-if="msg.forwarded_from" class="forward-mark">↪ 转发</text>
 
       <!-- 引用回复 -->
-      <view v-if="msg.reply_to && msg.reply_content" class="reply-quote">
-        <text>↩ {{ msg.reply_content }}</text>
+      <view v-if="msg.reply_to" class="reply-quote" @tap="$emit('scroll-to-msg', msg.reply_to)">
+        <view class="reply-quote-bar"></view>
+        <view class="reply-quote-body">
+          <text class="reply-sender">{{ msg.reply_sender_name || '消息' }}</text>
+          <text class="reply-snippet">{{ msg.reply_content || '[图片/文件]' }}</text>
+        </view>
       </view>
 
       <!-- 文字消息 -->
@@ -77,8 +81,27 @@
         </view>
       </view>
 
-      <!-- 时间 -->
-      <text class="bubble-time">{{ formatTime(msg.created_at) }}</text>
+      <!-- 时间 + 消息状态 -->
+      <view class="bubble-meta">
+        <text class="bubble-time">{{ formatTime(msg.created_at) }}</text>
+        <!-- 消息状态指示器（仅自己发送的显示） -->
+        <view v-if="isSelf && msg.msg_type !== 'system'" class="msg-status">
+          <!-- 发送中 -->
+          <view v-if="msg._status === 'sending'" class="status-sending">
+            <view class="spinner"></view>
+          </view>
+          <!-- 已发送 - 单灰勾 -->
+          <text v-else-if="msg._status === 'sent'" class="status-icon status-sent">✓</text>
+          <!-- 已送达 - 双灰勾 -->
+          <text v-else-if="msg._status === 'delivered'" class="status-icon status-delivered">✓✓</text>
+          <!-- 已读 - 双绿勾 -->
+          <text v-else-if="msg._status === 'read'" class="status-icon status-read">✓✓</text>
+          <!-- 发送失败 -->
+          <view v-else-if="msg._status === 'failed'" class="status-failed" @tap.stop="$emit('retry', msg)">
+            <text class="failed-icon">!</text>
+          </view>
+        </view>
+      </view>
     </view>
   </view>
 </template>
@@ -91,7 +114,7 @@ const props = defineProps({
   selfId: { type: String, default: '' }
 })
 
-defineEmits(['avatar', 'reaction', 'open-envelope', 'longpress'])
+defineEmits(['avatar', 'reaction', 'open-envelope', 'longpress', 'scroll-to-msg', 'retry'])
 
 const isSelf = computed(() => props.msg.sender_id === props.selfId)
 
@@ -163,10 +186,25 @@ function formatTime(ts) {
 }
 .forward-mark { font-size: $font-xs; color: var(--text-secondary); margin-bottom: 6rpx; }
 .reply-quote {
-  font-size: $font-xs; color: var(--text-secondary); background: rgba(0,0,0,0.04);
-  padding: 8rpx 16rpx; border-radius: 8rpx; margin-bottom: 8rpx;
-  border-left: 6rpx solid $primary-color; max-width: 100%; overflow: hidden;
-  text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  display: flex; align-items: stretch; margin-bottom: 8rpx; max-width: 100%;
+  background: rgba(0,0,0,0.04); border-radius: $radius-sm; overflow: hidden;
+  transition: background $transition-fast;
+  &:active { background: rgba(0,0,0,0.08); }
+}
+.reply-quote-bar {
+  width: 6rpx; flex-shrink: 0; background: $primary-color;
+}
+.reply-quote-body {
+  flex: 1; padding: 8rpx 12rpx; overflow: hidden;
+}
+.reply-sender {
+  font-size: 20rpx; color: $primary-color; font-weight: 500;
+  display: block; margin-bottom: 2rpx;
+}
+.reply-snippet {
+  font-size: $font-xs; color: $text-secondary;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  display: block;
 }
 .bubble-content {
   padding: 16rpx 24rpx; border-radius: 8rpx; font-size: $font-base; line-height: 1.5;
@@ -206,5 +244,41 @@ function formatTime(ts) {
   border-radius: 20rpx; padding: 4rpx 12rpx;
   &.mine { border-color: $primary-color; background: rgba(7,193,96,0.1); }
 }
-.bubble-time { font-size: 20rpx; color: var(--text-placeholder); margin-top: 6rpx; padding: 0 8rpx; }
+.bubble-meta {
+  display: flex; align-items: center; gap: 8rpx;
+  margin-top: 6rpx; padding: 0 8rpx;
+}
+.bubble-time { font-size: 20rpx; color: $text-placeholder; }
+
+/* 消息状态指示器 */
+.msg-status {
+  display: flex; align-items: center;
+}
+.status-sending {
+  width: 24rpx; height: 24rpx;
+}
+.spinner {
+  width: 24rpx; height: 24rpx;
+  border: 3rpx solid $msg-sending-color;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.status-icon {
+  font-size: 22rpx; font-weight: 500;
+}
+.status-sent { color: $msg-sent-color; }
+.status-delivered { color: $msg-delivered-color; }
+.status-read { color: $msg-read-color; }
+.status-failed {
+  width: 32rpx; height: 32rpx;
+  background: $msg-failed-color;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  transition: opacity $transition-fast;
+  &:active { opacity: 0.7; }
+}
+.failed-icon {
+  font-size: 20rpx; color: #fff; font-weight: bold;
+}
 </style>

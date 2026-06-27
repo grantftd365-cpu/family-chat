@@ -238,6 +238,53 @@ export function addReaction(messageId, emoji) {
   return post(`/api/messages/${messageId}/reactions`, { emoji })
 }
 
+/* ========== 消息必达 + 已读回执 + 表情回应 ========== */
+
+/** 批量确认收到消息 (ACK) */
+export function ackMessages(messageIds) {
+  return post('/api/messages/ack', { message_ids: messageIds })
+}
+
+/** 批量标记已读 — 打开群聊时调用 */
+export function markGroupRead(groupId, beforeTimestamp) {
+  return post('/api/messages/read', { group_id: groupId, before_timestamp: beforeTimestamp || 0 })
+}
+
+/** 标记单条消息已读 */
+export function markMessageRead(messageId) {
+  return post(`/api/messages/${messageId}/read`)
+}
+
+/** 获取已读某消息的用户列表 */
+export function getReadUsers(messageId) {
+  return get(`/api/messages/${messageId}/read-users`)
+}
+
+/** 获取所有群的未读消息数 */
+export function getAllUnread() {
+  return get('/api/unread')
+}
+
+/** 获取断线期间未送达消息 */
+export function getUndelivered() {
+  return get('/api/undelivered')
+}
+
+/** 添加表情回应 (飞书风格) */
+export function addReactionV2(messageId, emoji) {
+  return post(`/api/messages/${messageId}/reactions/v2`, { emoji })
+}
+
+/** 移除表情回应 */
+export function removeReactionV2(messageId, emoji) {
+  return del(`/api/messages/${messageId}/reactions/v2/${emoji}`)
+}
+
+/** 获取消息的表情回应 */
+export function getReactionsV2(messageId) {
+  return get(`/api/messages/${messageId}/reactions/v2`)
+}
+
 /* ========== 数字人相关 ========== */
 
 /** 获取数字人列表 */
@@ -567,6 +614,15 @@ export default {
   forwardMessage,
   pinMessage,
   addReaction,
+  ackMessages,
+  markGroupRead,
+  markMessageRead,
+  getReadUsers,
+  getAllUnread,
+  getUndelivered,
+  addReactionV2,
+  removeReactionV2,
+  getReactionsV2,
   getAgents,
   refineText,
   getFriends,

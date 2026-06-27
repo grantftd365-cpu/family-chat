@@ -32,11 +32,16 @@
       :refresher-triggered="refreshing"
       @refresherrefresh="onRefresh"
     >
-      <view v-if="groups.length === 0 && !loading" class="empty-state">
-        <text class="empty-icon">💬</text>
-        <text class="empty-text">暂无聊天</text>
-        <text class="empty-hint">点击右上角创建群聊开始吧</text>
-      </view>
+      <!-- 加载骨架屏 -->
+      <skeleton v-if="loading" mode="list" :count="8" />
+
+      <!-- 空状态 -->
+      <empty-state
+        v-else-if="groups.length === 0"
+        icon="💬"
+        title="暂无聊天"
+        description="点击右上角创建群聊开始吧"
+      />
 
       <view
         v-for="group in groups"
@@ -116,6 +121,8 @@ import { onShow, onUnload } from '@dcloudio/uni-app'
 import { useUserStore } from '../../stores/user'
 import { useChatStore } from '../../stores/chat'
 import { useThemeStore } from '../../stores/theme'
+import Skeleton from '../../components/skeleton.vue'
+import EmptyState from '../../components/empty-state.vue'
 
 const userStore = useUserStore()
 const chatStore = useChatStore()
@@ -309,28 +316,7 @@ function formatTime(time) {
   background: var(--bg-color);
 }
 
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 200rpx 0;
-}
 
-.empty-icon {
-  font-size: 120rpx;
-  margin-bottom: 24rpx;
-}
-
-.empty-text {
-  font-size: $font-lg;
-  color: var(--text-secondary);
-  margin-bottom: 12rpx;
-}
-
-.empty-hint {
-  font-size: $font-sm;
-  color: var(--text-placeholder);
-}
 
 .chat-item {
   display: flex;

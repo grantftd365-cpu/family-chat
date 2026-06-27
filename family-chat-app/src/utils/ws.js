@@ -139,12 +139,66 @@ class WsClient {
       case 'reaction':
         this.emit('reaction', data)
         break
+      case 'reaction_v2':
+        this.emit('reaction_v2', data)
+        break
+      case 'read':
+        this.emit('read', data)
+        break
+      case 'sync_complete':
+        this.emit('sync_complete', data)
+        break
       case 'pong':
         this._lastPong = Date.now()
         break
       default:
         this.emit(type, data)
     }
+  }
+
+  /**
+   * 确认收到消息（ACK）
+   */
+  sendAck(messageIds) {
+    if (!messageIds || !messageIds.length) return
+    this.send({
+      type: 'ack',
+      message_ids: messageIds
+    })
+  }
+
+  /**
+   * 标记群聊消息已读
+   */
+  sendRead(groupId, beforeTimestamp) {
+    this.send({
+      type: 'read',
+      group_id: groupId,
+      before: beforeTimestamp || Date.now() / 1000
+    })
+  }
+
+  /**
+   * 标记单条消息已读
+   */
+  sendReadSingle(messageId) {
+    this.send({
+      type: 'read_single',
+      message_id: messageId
+    })
+  }
+
+  /**
+   * 发送表情回应
+   */
+  sendReaction(messageId, emoji, groupId, action = 'add') {
+    this.send({
+      type: 'reaction',
+      message_id: messageId,
+      emoji: emoji,
+      group_id: groupId,
+      action: action
+    })
   }
 
   /**

@@ -1,31 +1,78 @@
-/* uni.scss - 全局样式变量 */
+/* ============================================
+ * FamilyChat Design Token System
+ * ============================================ */
+
+/* ---- 色彩系统 ---- */
+// 主色 - 微信绿
 $primary-color: #07C160;
 $primary-dark: #06AD56;
 $primary-light: #38D97A;
+$primary-50: rgba(7, 193, 96, 0.05);
+$primary-100: rgba(7, 193, 96, 0.1);
+$primary-200: rgba(7, 193, 96, 0.2);
+
+// 语义色
 $danger-color: #FA5151;
+$danger-light: #FF7A7A;
 $warning-color: #FFC300;
+$warning-light: #FFD966;
 $info-color: #10AEFF;
+$info-light: #5AC8FA;
+$success-color: #07C160;
+
+// 背景色
 $bg-color: #EDEDED;
 $bg-color-dark: #111111;
+$bg-color-secondary: #F7F7F7;
+$bg-color-secondary-dark: #1C1C1E;
+
+// 卡片
 $card-bg: #ffffff;
 $card-bg-dark: #1C1C1E;
+
+// 文字色
 $text-primary: #000000;
 $text-primary-dark: #FFFFFF;
 $text-secondary: #888888;
 $text-secondary-dark: #8E8E93;
 $text-placeholder: #B2B2B2;
 $text-placeholder-dark: #636366;
+$text-inverse: #FFFFFF;
+
+// 边框色
 $border-color: #E5E5E5;
 $border-color-dark: #38383A;
+$border-color-light: #F0F0F0;
+
+// 聊天气泡
 $bubble-self: #95EC69;
 $bubble-self-dark: #2C6B3E;
 $bubble-other: #ffffff;
 $bubble-other-dark: #2C2C2E;
+
+// 聊天背景
 $chat-bg: #EDEDED;
 $chat-bg-dark: #000000;
-$nav-height: 88rpx;
-$tab-height: 100rpx;
-$status-bar-height: var(--status-bar-height, 44px);
+
+// 消息状态色
+$msg-sending-color: #B2B2B2;
+$msg-sent-color: #888888;
+$msg-delivered-color: #888888;
+$msg-read-color: #07C160;
+$msg-failed-color: #FA5151;
+
+/* ---- 间距系统 ---- */
+$space-xxs: 4rpx;
+$space-xs: 8rpx;
+$space-sm: 12rpx;
+$space-md: 16rpx;
+$space-base: 24rpx;
+$space-lg: 32rpx;
+$space-xl: 40rpx;
+$space-xxl: 48rpx;
+$space-xxxl: 64rpx;
+
+/* ---- 字号系统 ---- */
 $font-xs: 20rpx;
 $font-sm: 24rpx;
 $font-base: 28rpx;
@@ -33,10 +80,84 @@ $font-md: 32rpx;
 $font-lg: 36rpx;
 $font-xl: 40rpx;
 $font-xxl: 48rpx;
+$font-display: 56rpx;
+
+/* ---- 行高 ---- */
+$line-height-tight: 1.2;
+$line-height-base: 1.5;
+$line-height-relaxed: 1.75;
+
+/* ---- 圆角系统 ---- */
+$radius-xs: 4rpx;
 $radius-sm: 8rpx;
 $radius-base: 12rpx;
+$radius-md: 16rpx;
 $radius-lg: 20rpx;
+$radius-xl: 28rpx;
 $radius-round: 50%;
+$radius-pill: 999rpx;
+
+/* ---- 阴影系统 ---- */
+$shadow-xs: 0 1rpx 4rpx rgba(0, 0, 0, 0.03);
 $shadow-sm: 0 2rpx 8rpx rgba(0, 0, 0, 0.05);
 $shadow-base: 0 4rpx 16rpx rgba(0, 0, 0, 0.08);
+$shadow-md: 0 6rpx 24rpx rgba(0, 0, 0, 0.1);
 $shadow-lg: 0 8rpx 32rpx rgba(0, 0, 0, 0.12);
+$shadow-xl: 0 16rpx 48rpx rgba(0, 0, 0, 0.16);
+
+/* ---- 尺寸 ---- */
+$nav-height: 88rpx;
+$tab-height: 100rpx;
+$status-bar-height: var(--status-bar-height, 44px);
+$avatar-sm: 64rpx;
+$avatar-base: 80rpx;
+$avatar-lg: 96rpx;
+$avatar-xl: 128rpx;
+
+/* ---- 动画 ---- */
+$transition-fast: 0.15s ease;
+$transition-base: 0.25s ease;
+$transition-slow: 0.4s ease;
+$transition-spring: 0.3s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+
+// Shimmer 骨架屏动画
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+// 旋转动画
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+// 淡入
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+// 淡入上移
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20rpx); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+// 缩放弹入
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+// 脉冲
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+// 打字跳动
+@keyframes typingBounce {
+  0%, 80%, 100% { opacity: 0.3; }
+  40% { opacity: 1; }
+}

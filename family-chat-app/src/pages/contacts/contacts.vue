@@ -42,13 +42,16 @@
 
     <!-- 好友列表 -->
     <scroll-view scroll-y class="friend-list" :style="{ height: listHeight + 'px' }">
-      <view v-if="loading" class="loading-state">
-        <text>加载中...</text>
-      </view>
-      <view v-else-if="friends.length === 0" class="empty-state">
-        <text class="empty-icon">👤</text>
-        <text class="empty-text">暂无联系人</text>
-      </view>
+      <!-- 加载骨架屏 -->
+      <skeleton v-if="loading" mode="list" :count="8" />
+
+      <!-- 空状态 -->
+      <empty-state
+        v-else-if="friends.length === 0"
+        icon="👤"
+        title="暂无联系人"
+        description="点击右上角添加好友"
+      />
       <view v-else>
         <!-- 字母索引分组 -->
         <view
@@ -115,6 +118,8 @@ import { onShow } from '@dcloudio/uni-app'
 import { useUserStore } from '../../stores/user'
 import { useChatStore } from '../../stores/chat'
 import * as api from '../../utils/api'
+import Skeleton from '../../components/skeleton.vue'
+import EmptyState from '../../components/empty-state.vue'
 
 const userStore = useUserStore()
 const chatStore = useChatStore()
@@ -343,30 +348,7 @@ function getPinyinInitial(char) {
   background: var(--card-bg);
 }
 
-.loading-state {
-  display: flex;
-  justify-content: center;
-  padding: 60rpx;
-  font-size: $font-base;
-  color: var(--text-secondary);
-}
 
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 120rpx 0;
-}
-
-.empty-icon {
-  font-size: 100rpx;
-  margin-bottom: 20rpx;
-}
-
-.empty-text {
-  font-size: $font-base;
-  color: var(--text-secondary);
-}
 
 .group-header {
   padding: 12rpx 30rpx;

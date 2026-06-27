@@ -13,6 +13,7 @@ from loguru import logger
 from ..core.auth import get_current_user
 from ..core.websocket import ws_manager
 from ..models.database import get_db, gen_id, now
+from ..services.delivery import MessageDelivery, ReactionManager
 
 router = APIRouter(prefix="/api")
 
@@ -116,6 +117,12 @@ async def list_groups(user=Depends(get_current_user)):
                     "description": row[3], "announcement": row[4], "owner_id": row[5],
                     "member_count": row[6], "last_message": last_msg, "last_time": row[10] or 0,
                 })
+
+        # 批量获取未读数
+        unread_counts = await MessageDelivery.get_all_unread_counts(user["user_id"])
+        for g in groups:
+            g["unread_count"] = unread_counts.get(g["id"], 0)
+
         return groups
     finally:
         await db.close()
@@ -324,21 +331,27 @@ async def get_messages(group_id: str, limit: int = 50, before: float = 0, user=D
                 msg["msg_type"] = "system"
             messages.append(msg)
 
-        # 获取 reactions
+        # 获取 reactions v2 (飞书风格表情回应)
         msg_ids = [m["id"] for m in messages]
-        if msg_ids:
-            placeholders = ",".join("?" * len(msg_ids))
-            async with db.execute(
-                f"SELECT message_id, emoji, user_id FROM message_reactions WHERE message_id IN ({placeholders})",
-                msg_ids
-            ) as cursor:
-                reactions = {}
-                async for r in cursor:
-                    if r[0] not in reactions:
-                        reactions[r[0]] = []
-                    reactions[r[0]].append({"emoji": r[1], "user_id": r[2]})
+        reactions_v2 = await ReactionManager.get_batch_reactions(msg_ids)
+        for m in messages:
+            m["reactions"] = reactions_v2.get(m["id"], [])
+
+        # 获取自己发送的消息的投递状态
+        my_msg_ids = [m["id"] for m in messages if m["sender_id"] == user["user_id"]]
+        if my_msg_ids:
+            for mid in my_msg_ids:
+                status = await MessageDelivery.get_message_status(mid)
                 for m in messages:
-                    m["reactions"] = reactions.get(m["id"], [])
+                    if m["id"] == mid:
+                        if status["pending"] > 0:
+                            m["_status"] = "sent"
+                        elif status["delivered"] > 0:
+                            m["_status"] = "delivered"
+                        elif status["read"] > 0:
+                            m["_status"] = "read"
+                        else:
+                            m["_status"] = "sent"
 
         return messages
     finally:
@@ -399,6 +412,9 @@ async def send_message(req: SendMessageReq, user=Depends(get_current_user)):
             }
         }
         await ws_manager.broadcast_to_group(req.group_id, msg_data, exclude_user=user["user_id"])
+
+        # 消息必达：为群成员创建投递记录
+        asyncio.create_task(MessageDelivery.on_message_sent(msg_id, req.group_id, user["user_id"]))
 
         # 触发 Agent 回复（支持语音）
         asyncio.create_task(
@@ -619,6 +635,152 @@ async def remove_reaction(message_id: str, emoji: str, user=Depends(get_current_
         return {"status": "ok"}
     finally:
         await db.close()
+
+
+# ==================== 消息必达 + 已读回执 ====================
+
+class AckReq(BaseModel):
+    message_ids: list  # 批量确认收到
+
+
+class ReadReq(BaseModel):
+    group_id: str
+    before_timestamp: float = 0  # 标记该时间之前的消息全部已读
+
+
+class ReactionV2Req(BaseModel):
+    emoji: str
+
+
+@router.post("/messages/ack")
+async def ack_messages(req: AckReq, user=Depends(get_current_user)):
+    """客户端确认收到消息（标记为 delivered）"""
+    for mid in req.message_ids:
+        await MessageDelivery.mark_delivered(mid, user["user_id"])
+    return {"status": "ok", "acked": len(req.message_ids)}
+
+
+@router.post("/messages/read")
+async def mark_read(req: ReadReq, user=Depends(get_current_user)):
+    """批量标记已读 — 打开群聊时调用"""
+    await MessageDelivery.mark_batch_read(
+        req.group_id, user["user_id"], req.before_timestamp
+    )
+    # 广播已读状态给群内其他人
+    await ws_manager.broadcast_to_group(req.group_id, {
+        "type": "read",
+        "data": {
+            "user_id": user["user_id"],
+            "group_id": req.group_id,
+            "before": req.before_timestamp,
+        }
+    }, exclude_user=user["user_id"])
+    return {"status": "ok"}
+
+
+@router.post("/messages/{message_id}/read")
+async def mark_single_read(message_id: str, user=Depends(get_current_user)):
+    """标记单条消息已读"""
+    await MessageDelivery.mark_read(message_id, user["user_id"])
+    return {"status": "ok"}
+
+
+@router.get("/messages/{message_id}/read-users")
+async def get_read_users(message_id: str, user=Depends(get_current_user)):
+    """获取已读某消息的用户列表"""
+    users = await MessageDelivery.get_read_users(message_id)
+    return users
+
+
+@router.get("/unread")
+async def get_all_unread(user=Depends(get_current_user)):
+    """获取所有群的未读消息数"""
+    counts = await MessageDelivery.get_all_unread_counts(user["user_id"])
+    return counts
+
+
+@router.get("/messages/{group_id}/undelivered")
+async def get_undelivered(group_id: str, user=Depends(get_current_user)):
+    """获取用户在某群的未送达消息（重连补发）"""
+    messages = await MessageDelivery.get_undelivered_messages(user["user_id"])
+    # 过滤出当前群的消息
+    group_msgs = [m for m in messages if m["group_id"] == group_id]
+    return group_msgs
+
+
+@router.get("/undelivered")
+async def get_all_undelivered(user=Depends(get_current_user)):
+    """获取用户所有未送达消息（断线重连时调用）"""
+    messages = await MessageDelivery.get_undelivered_messages(user["user_id"])
+    return messages
+
+
+# ==================== 飞书风格表情回应 ====================
+
+@router.post("/messages/{message_id}/reactions/v2")
+async def add_reaction_v2(message_id: str, req: ReactionV2Req, user=Depends(get_current_user)):
+    """添加表情回应"""
+    # 获取用户昵称
+    db = await get_db()
+    try:
+        async with db.execute("SELECT nickname FROM users WHERE id=?", (user["user_id"],)) as c:
+            row = await c.fetchone()
+            name = row[0] if row else "unknown"
+    finally:
+        await db.close()
+
+    reactions = await ReactionManager.add_reaction(message_id, user["user_id"], name, req.emoji)
+
+    # 广播表情回应
+    async with db.execute("SELECT group_id FROM messages WHERE id=?", (message_id,)) as c:
+        msg_row = await c.fetchone()
+    if msg_row:
+        await ws_manager.broadcast_to_group(msg_row[0], {
+            "type": "reaction_v2",
+            "data": {
+                "message_id": message_id,
+                "user_id": user["user_id"],
+                "user_name": name,
+                "emoji": req.emoji,
+                "action": "add",
+                "reactions": reactions,
+            }
+        })
+
+    return {"reactions": reactions}
+
+
+@router.delete("/messages/{message_id}/reactions/v2/{emoji}")
+async def remove_reaction_v2(message_id: str, emoji: str, user=Depends(get_current_user)):
+    """移除表情回应"""
+    reactions = await ReactionManager.remove_reaction(message_id, user["user_id"], emoji)
+
+    db = await get_db()
+    try:
+        async with db.execute("SELECT group_id FROM messages WHERE id=?", (message_id,)) as c:
+            msg_row = await c.fetchone()
+        if msg_row:
+            await ws_manager.broadcast_to_group(msg_row[0], {
+                "type": "reaction_v2",
+                "data": {
+                    "message_id": message_id,
+                    "user_id": user["user_id"],
+                    "emoji": emoji,
+                    "action": "remove",
+                    "reactions": reactions,
+                }
+            })
+    finally:
+        await db.close()
+
+    return {"reactions": reactions}
+
+
+@router.get("/messages/{message_id}/reactions/v2")
+async def get_reactions_v2(message_id: str, user=Depends(get_current_user)):
+    """获取消息的表情回应"""
+    reactions = await ReactionManager.get_reactions(message_id)
+    return {"reactions": reactions}
 
 
 # ==================== 拍一拍 ====================

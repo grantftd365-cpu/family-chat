@@ -282,6 +282,41 @@ async def init_db():
             action TEXT DEFAULT '拍了拍',
             created_at REAL NOT NULL
         );
+
+        -- ==================== 消息投递状态表 ====================
+        -- 每条消息对每个用户的投递状态: pending/delivered/read
+        CREATE TABLE IF NOT EXISTS message_delivery (
+            message_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            status TEXT DEFAULT 'pending',  -- pending / delivered / read
+            delivered_at REAL DEFAULT 0,
+            read_at REAL DEFAULT 0,
+            PRIMARY KEY (message_id, user_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_delivery_user ON message_delivery(user_id, status);
+
+        -- ==================== 离线消息队列表 ====================
+        -- 用户离线期间的消息，上线后推送
+        CREATE TABLE IF NOT EXISTS offline_queue (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            message_json TEXT NOT NULL,
+            created_at REAL NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_offline_user ON offline_queue(user_id, created_at);
+
+        -- ==================== 消息表情回应表 ====================
+        -- 飞书风格：每条消息下方的小表情回应
+        CREATE TABLE IF NOT EXISTS message_reactions_v2 (
+            id TEXT PRIMARY KEY,
+            message_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            user_name TEXT DEFAULT '',
+            emoji TEXT NOT NULL,
+            created_at REAL NOT NULL,
+            UNIQUE(message_id, user_id, emoji)
+        );
+        CREATE INDEX IF NOT EXISTS idx_reaction_msg ON message_reactions_v2(message_id);
     """)
 
     await db.commit()

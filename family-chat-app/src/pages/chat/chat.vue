@@ -53,9 +53,12 @@
 
         <!-- 撤回消息 -->
         <view v-else-if="msg.recalled" class="system-msg">
-          <text class="system-text">
-            {{ msg.sender_id === currentUserId ? '你' : msg.sender_name }}撤回了一条消息
-          </text>
+          <view class="recall-wrap">
+            <text class="system-text">
+              {{ msg.sender_id === currentUserId ? '你' : msg.sender_name }}撤回了一条消息
+            </text>
+            <text v-if="msg.sender_id === currentUserId" class="recall-edit-btn" @tap="reEditMessage(msg)">重新编辑</text>
+          </view>
         </view>
 
         <!-- 普通消息 -->
@@ -861,6 +864,14 @@ async function handleRecall() {
 function goBack() {
   uni.navigateBack()
 }
+
+// 撤回后重新编辑
+function reEditMessage(msg) {
+  if (msg.content) {
+    inputText.value = msg.content
+    uni.showToast({ title: '已恢复到输入框', icon: 'none' })
+  }
+}
 </script>
 
 <style lang="scss" scoped>
@@ -989,6 +1000,26 @@ function goBack() {
   background: rgba(0, 0, 0, 0.04);
   padding: 6rpx 20rpx;
   border-radius: $radius-sm;
+}
+
+.recall-wrap {
+  display: flex;
+  align-items: center;
+  gap: $space-sm;
+}
+
+.recall-edit-btn {
+  font-size: $font-xs;
+  color: $primary-color;
+  background: rgba(0, 0, 0, 0.04);
+  padding: 6rpx 16rpx;
+  border-radius: $radius-sm;
+  font-weight: 500;
+  transition: opacity $transition-fast;
+
+  &:active {
+    opacity: 0.7;
+  }
 }
 
 .msg-content-row {
