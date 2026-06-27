@@ -285,6 +285,49 @@ export function getReactionsV2(messageId) {
   return get(`/api/messages/${messageId}/reactions/v2`)
 }
 
+/* ========== 搜索 ========== */
+
+/** 在群聊中搜索消息 */
+export function searchGroupMessages(groupId, q, limit = 20) {
+  return get(`/api/messages/${groupId}/search`, { q, limit })
+}
+
+/* ========== 群公告 + 置顶 ========== */
+
+/** 获取群公告 */
+export function getGroupAnnouncement(groupId) {
+  return get(`/api/groups/${groupId}/announcement`)
+}
+
+/** 更新群公告 */
+export function updateGroupAnnouncement(groupId, data) {
+  return put(`/api/groups/${groupId}/announcement`, data)
+}
+
+/** 置顶消息到群 */
+export function pinMessageToGroup(groupId, messageId) {
+  return post(`/api/groups/${groupId}/pin/${messageId}`)
+}
+
+/** 获取群置顶消息 */
+export function getGroupPinned(groupId) {
+  return get(`/api/groups/${groupId}/pinned`)
+}
+
+/* ========== 消息管理 ========== */
+
+/** 删除消息（仅自己可见） */
+export function deleteMessage(messageId) {
+  return del(`/api/messages/${messageId}`)
+}
+
+/* ========== 用户状态 ========== */
+
+/** 查询用户在线状态 */
+export function getUserOnline(userId) {
+  return get(`/api/users/${userId}/online`)
+}
+
 /* ========== 数字人相关 ========== */
 
 /** 获取数字人列表 */
@@ -623,6 +666,13 @@ export default {
   addReactionV2,
   removeReactionV2,
   getReactionsV2,
+  searchGroupMessages,
+  getGroupAnnouncement,
+  updateGroupAnnouncement,
+  pinMessageToGroup,
+  getGroupPinned,
+  deleteMessage,
+  getUserOnline,
   getAgents,
   refineText,
   getFriends,

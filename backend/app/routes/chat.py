@@ -68,6 +68,11 @@ class PatReq(BaseModel):
     action: str = "拍了拍"
 
 
+class UpdateAnnouncementReq(BaseModel):
+    content: str
+    pinned_message_ids: list = []  # 可选：同时置顶的消息ID列表
+
+
 class RedEnvelopeReq(BaseModel):
     group_id: str = ""
     receiver_id: str = ""
@@ -303,6 +308,15 @@ async def get_messages(group_id: str, limit: int = 50, before: float = 0, user=D
     db = await get_db()
     try:
         messages = []
+        # 获取用户隐藏的消息ID集合
+        hidden_ids = set()
+        async with db.execute(
+            "SELECT message_id FROM hidden_messages WHERE user_id=?",
+            (user["user_id"],)
+        ) as hc:
+            async for hr in hc:
+                hidden_ids.add(hr[0])
+
         if before > 0:
             sql = "SELECT * FROM messages WHERE group_id=? AND created_at<? ORDER BY created_at DESC LIMIT ?"
             params = (group_id, before, limit)
@@ -329,6 +343,9 @@ async def get_messages(group_id: str, limit: int = 50, before: float = 0, user=D
             if msg["recalled"]:
                 msg["content"] = "你撤回了一条消息" if msg["sender_id"] == user["user_id"] else f"{msg['sender_name']}撤回了一条消息"
                 msg["msg_type"] = "system"
+            # 跳过用户已隐藏的消息
+            if msg["id"] in hidden_ids:
+                continue
             messages.append(msg)
 
         # 获取 reactions v2 (飞书风格表情回应)
@@ -1060,6 +1077,261 @@ import string
 def _gen_family_code() -> str:
     """生成6位家庭邀请码"""
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+
+
+@router.get("/messages/{group_id}/search")
+async def search_messages(group_id: str, q: str, limit: int = 20, user=Depends(get_current_user)):
+    """在指定群聊中搜索消息内容，返回匹配的消息及上下文（前后各1条）"""
+    if not q or not q.strip():
+        raise HTTPException(400, "搜索关键词不能为空")
+    db = await get_db()
+    try:
+        # 权限校验：必须是群成员
+        async with db.execute(
+            "SELECT 1 FROM group_members WHERE group_id=? AND user_id=?",
+            (group_id, user["user_id"])
+        ) as c:
+            if not await c.fetchone():
+                raise HTTPException(403, "你不是该群成员")
+
+        messages = []
+        # 搜索匹配的消息
+        async with db.execute(
+            """SELECT id, group_id, sender_id, sender_name, sender_avatar, content, msg_type,
+                     media_url, reply_to, reply_content, recalled, pinned, created_at
+               FROM messages WHERE group_id=? AND content LIKE ? AND recalled=0
+               ORDER BY created_at DESC LIMIT ?""",
+            (group_id, f"%{q}%", limit)
+        ) as cursor:
+            async for row in cursor:
+                messages.append({
+                    "id": row[0], "group_id": row[1], "sender_id": row[2],
+                    "sender_name": row[3], "sender_avatar": row[4] or "",
+                    "content": row[5], "msg_type": row[6], "media_url": row[7] or "",
+                    "reply_to": row[8] or "", "reply_content": row[9] or "",
+                    "recalled": bool(row[10]), "pinned": bool(row[11]),
+                    "created_at": row[12],
+                })
+
+        # 为每条匹配消息获取上下文（前后各1条）
+        results = []
+        for msg in messages:
+            context = {"before": None, "target": msg, "after": None}
+            # 前一条
+            async with db.execute(
+                """SELECT id, sender_name, content, msg_type, created_at
+                   FROM messages WHERE group_id=? AND created_at<?
+                   ORDER BY created_at DESC LIMIT 1""",
+                (group_id, msg["created_at"])
+            ) as c:
+                prev = await c.fetchone()
+                if prev:
+                    context["before"] = {
+                        "id": prev[0], "sender_name": prev[1], "content": prev[2],
+                        "msg_type": prev[3], "created_at": prev[4],
+                    }
+            # 后一条
+            async with db.execute(
+                """SELECT id, sender_name, content, msg_type, created_at
+                   FROM messages WHERE group_id=? AND created_at>?
+                   ORDER BY created_at ASC LIMIT 1""",
+                (group_id, msg["created_at"])
+            ) as c:
+                nxt = await c.fetchone()
+                if nxt:
+                    context["after"] = {
+                        "id": nxt[0], "sender_name": nxt[1], "content": nxt[2],
+                        "msg_type": nxt[3], "created_at": nxt[4],
+                    }
+            results.append(context)
+
+        return {"results": results, "total": len(results)}
+    finally:
+        await db.close()
+
+
+# ==================== 群公告管理 ====================
+
+@router.get("/groups/{group_id}/announcement")
+async def get_announcement(group_id: str, user=Depends(get_current_user)):
+    """获取群公告"""
+    db = await get_db()
+    try:
+        # 权限校验：必须是群成员
+        async with db.execute(
+            "SELECT 1 FROM group_members WHERE group_id=? AND user_id=?",
+            (group_id, user["user_id"])
+        ) as c:
+            if not await c.fetchone():
+                raise HTTPException(403, "你不是该群成员")
+
+        async with db.execute(
+            "SELECT announcement FROM groups WHERE id=?",
+            (group_id,)
+        ) as c:
+            row = await c.fetchone()
+            if not row:
+                raise HTTPException(404, "群不存在")
+            return {"group_id": group_id, "announcement": row[0] or ""}
+    finally:
+        await db.close()
+
+
+@router.put("/groups/{group_id}/announcement")
+async def update_announcement(group_id: str, req: UpdateAnnouncementReq, user=Depends(get_current_user)):
+    """更新群公告（仅群主/管理员）"""
+    db = await get_db()
+    try:
+        # 权限校验
+        async with db.execute(
+            "SELECT role FROM group_members WHERE group_id=? AND user_id=?",
+            (group_id, user["user_id"])
+        ) as c:
+            row = await c.fetchone()
+            if not row:
+                raise HTTPException(403, "你不是群成员")
+            if row[0] not in ("owner", "admin"):
+                raise HTTPException(403, "只有群主或管理员可以更新公告")
+
+        # 更新公告文本
+        await db.execute(
+            "UPDATE groups SET announcement=?, updated_at=? WHERE id=?",
+            (req.content, now(), group_id)
+        )
+
+        # 处理置顶消息：将指定消息标记为 pinned
+        if req.pinned_message_ids:
+            for mid in req.pinned_message_ids:
+                async with db.execute(
+                    "SELECT group_id FROM messages WHERE id=?",
+                    (mid,)
+                ) as mc:
+                    msg_row = await mc.fetchone()
+                    if msg_row and msg_row[0] == group_id:
+                        await db.execute(
+                            "UPDATE messages SET pinned=1 WHERE id=?",
+                            (mid,)
+                        )
+
+        await db.commit()
+        return {"status": "ok"}
+    finally:
+        await db.close()
+
+
+# ==================== 群置顶消息 ====================
+
+@router.post("/groups/{group_id}/pin/{message_id}")
+async def pin_to_group(group_id: str, message_id: str, user=Depends(get_current_user)):
+    """将消息置顶到群公告（仅群主/管理员）"""
+    db = await get_db()
+    try:
+        # 权限校验
+        async with db.execute(
+            "SELECT role FROM group_members WHERE group_id=? AND user_id=?",
+            (group_id, user["user_id"])
+        ) as c:
+            row = await c.fetchone()
+            if not row:
+                raise HTTPException(403, "你不是群成员")
+            if row[0] not in ("owner", "admin"):
+                raise HTTPException(403, "只有群主或管理员可以置顶消息")
+
+        # 验证消息属于该群
+        async with db.execute(
+            "SELECT group_id FROM messages WHERE id=?",
+            (message_id,)
+        ) as c:
+            msg_row = await c.fetchone()
+            if not msg_row:
+                raise HTTPException(404, "消息不存在")
+            if msg_row[0] != group_id:
+                raise HTTPException(400, "消息不属于该群")
+
+        await db.execute("UPDATE messages SET pinned=1 WHERE id=?", (message_id,))
+        await db.commit()
+        return {"status": "ok"}
+    finally:
+        await db.close()
+
+
+@router.get("/groups/{group_id}/pinned")
+async def get_group_pinned(group_id: str, user=Depends(get_current_user)):
+    """获取群置顶消息"""
+    db = await get_db()
+    try:
+        # 权限校验：必须是群成员
+        async with db.execute(
+            "SELECT 1 FROM group_members WHERE group_id=? AND user_id=?",
+            (group_id, user["user_id"])
+        ) as c:
+            if not await c.fetchone():
+                raise HTTPException(403, "你不是该群成员")
+
+        msgs = []
+        async with db.execute(
+            """SELECT id, sender_id, sender_name, content, msg_type, created_at
+               FROM messages WHERE group_id=? AND pinned=1
+               ORDER BY created_at DESC""",
+            (group_id,)
+        ) as cursor:
+            async for row in cursor:
+                msgs.append({
+                    "id": row[0], "sender_id": row[1], "sender_name": row[2],
+                    "content": row[3], "msg_type": row[4], "created_at": row[5],
+                })
+        return msgs
+    finally:
+        await db.close()
+
+
+# ==================== 消息删除（仅对自己隐藏） ====================
+
+@router.delete("/messages/{message_id}")
+async def delete_message(message_id: str, user=Depends(get_current_user)):
+    """删除消息（仅对自己隐藏，其他人仍可见）"""
+    db = await get_db()
+    try:
+        # 验证消息存在
+        async with db.execute(
+            "SELECT id FROM messages WHERE id=?",
+            (message_id,)
+        ) as c:
+            if not await c.fetchone():
+                raise HTTPException(404, "消息不存在")
+
+        # 记录隐藏关系（幂等，忽略重复）
+        await db.execute(
+            "INSERT OR IGNORE INTO hidden_messages (message_id, user_id, hidden_at) VALUES (?,?,?)",
+            (message_id, user["user_id"], now())
+        )
+        await db.commit()
+        return {"status": "ok"}
+    finally:
+        await db.close()
+
+
+# ==================== 用户在线状态 ====================
+
+@router.get("/users/{user_id}/online")
+async def get_user_online(user_id: str, user=Depends(get_current_user)):
+    """查询用户在线状态"""
+    db = await get_db()
+    try:
+        async with db.execute(
+            "SELECT online_status, last_seen FROM users WHERE id=?",
+            (user_id,)
+        ) as c:
+            row = await c.fetchone()
+            if not row:
+                raise HTTPException(404, "用户不存在")
+            return {
+                "user_id": user_id,
+                "online_status": row[0] or "offline",
+                "last_seen": row[1] or 0,
+            }
+    finally:
+        await db.close()
 
 
 @router.post("/groups/{group_id}/invite-code")

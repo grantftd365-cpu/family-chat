@@ -7,6 +7,7 @@ from ..core.auth import get_ws_user
 from ..core.websocket import ws_manager
 from ..models.database import get_db, now
 from ..services.delivery import MessageDelivery, ReactionManager
+from ..services.calling import handle_call_signaling
 
 router = APIRouter()
 
@@ -134,6 +135,10 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query("")):
                                     "reactions": reactions,
                                 }
                             })
+
+                elif msg_type == "call":
+                    # WebRTC 通话信令
+                    await handle_call_signaling(user_id, msg)
 
             except json.JSONDecodeError:
                 pass

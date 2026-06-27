@@ -317,6 +317,15 @@ async def init_db():
             UNIQUE(message_id, user_id, emoji)
         );
         CREATE INDEX IF NOT EXISTS idx_reaction_msg ON message_reactions_v2(message_id);
+
+        -- ==================== 消息隐藏表（仅对自己可见删除） ====================
+        CREATE TABLE IF NOT EXISTS hidden_messages (
+            message_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            hidden_at REAL NOT NULL,
+            PRIMARY KEY (message_id, user_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_hidden_user ON hidden_messages(user_id);
     """)
 
     await db.commit()

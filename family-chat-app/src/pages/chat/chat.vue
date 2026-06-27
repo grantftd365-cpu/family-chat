@@ -10,9 +10,48 @@
           </view>
         </view>
         <text class="nav-title">{{ chatName }}</text>
-        <view class="nav-right" @tap="showGroupInfo = true">
-          <text>👤</text>
+        <view class="nav-right">
+          <view class="nav-icon-btn" @tap="toggleSearch">
+            <text>🔍</text>
+          </view>
+          <view class="nav-icon-btn" @tap="showGroupInfo = true">
+            <text>👤</text>
+          </view>
         </view>
+      </view>
+    </view>
+
+    <!-- 搜索栏 -->
+    <view v-if="showSearch" class="search-overlay" :style="{ top: (statusBarHeight + 44) + 'px' }">
+      <view class="search-bar">
+        <text class="search-icon">🔍</text>
+        <input
+          v-model="searchKeyword"
+          class="search-input"
+          placeholder="搜索聊天记录..."
+          :focus="showSearch"
+          @input="onSearchInput"
+        />
+        <text v-if="searchKeyword" class="search-clear" @tap="clearSearch">✕</text>
+      </view>
+      <text class="search-cancel" @tap="toggleSearch">取消</text>
+      <view v-if="searchResults.length > 0" class="search-results">
+        <text class="search-count">找到 {{ searchResults.length }} 条结果</text>
+        <scroll-view scroll-y class="search-results-list">
+          <view
+            v-for="result in searchResults"
+            :key="result.id"
+            class="search-result-item"
+            @tap="jumpToSearchResult(result)"
+          >
+            <text class="result-sender">{{ result.sender_name }}</text>
+            <text class="result-content">{{ result.content }}</text>
+            <text class="result-time">{{ formatMsgTime(result.created_at) }}</text>
+          </view>
+        </scroll-view>
+      </view>
+      <view v-else-if="searchKeyword && !searching" class="search-empty">
+        <text>没有找到相关消息</text>
       </view>
     </view>
 
@@ -50,11 +89,14 @@
 
       <!-- 消息列表 -->
       <view
-        v-for="(msg, index) in messages"
+        v-for="(msg, index) in filteredMessages"
         :key="msg.id || index"
         :id="'msg-' + (msg.id || index)"
         class="msg-row msg-anim"
-        :class="{ self: msg.sender_id === currentUserId }"
+        :class="{
+          self: msg.sender_id === currentUserId,
+          'msg-highlight': highlightMsgId === msg.id
+        }"
       >
         <!-- 时间分割线 -->
         <view v-if="shouldShowTime(msg, index)" class="time-divider">
@@ -107,6 +149,15 @@
                 'bubble-other': msg.sender_id !== currentUserId
               }"
             >
+              <!-- 引用回复 -->
+              <view v-if="msg.reply_to" class="reply-quote" @tap="onScrollToMsg(msg.reply_to)">
+                <view class="reply-quote-bar"></view>
+                <view class="reply-quote-body">
+                  <text class="reply-sender">{{ msg.reply_sender_name || '消息' }}</text>
+                  <text class="reply-snippet">{{ msg.reply_content || '[图片/文件]' }}</text>
+                </view>
+              </view>
+
               <!-- 文字消息 -->
               <text
                 v-if="msg.msg_type === 'text' || !msg.msg_type"
@@ -163,6 +214,18 @@
 
               <!-- 未知消息 -->
               <text v-else class="msg-text">[不支持的消息类型]</text>
+            </view>
+
+            <!-- 快速表情回应栏 -->
+            <view v-if="quickReactMsgId === msg.id" class="quick-react-bar">
+              <view
+                v-for="emoji in quickEmojis"
+                :key="emoji"
+                class="quick-react-item"
+                @tap.stop="sendQuickReaction(msg, emoji)"
+              >
+                <text>{{ emoji }}</text>
+              </view>
             </view>
 
             <!-- 表情反应 -->
@@ -275,7 +338,7 @@
     </view>
 
     <!-- 消息操作菜单 -->
-    <view v-if="showMsgMenu" class="modal-mask" @tap="showMsgMenu = false">
+    <view v-if="showMsgMenu" class="modal-mask" @tap="showMsgMenu = false; quickReactMsgId = null">
       <view class="msg-menu" :style="menuStyle" @tap.stop>
         <view class="menu-item" @tap="handleCopy">
           <text>📋 复制</text>
@@ -335,11 +398,34 @@ const textareaMaxHeight = ref(120) // ~5 lines
 const announcement = ref('')
 const showAnnouncement = ref(true)
 const announcementExpanded = ref(false)
+
+// 搜索相关
+const showSearch = ref(false)
+const searchKeyword = ref('')
+const searchResults = ref([])
+const searching = ref(false)
+const highlightMsgId = ref(null)
+
+// 快速表情回应
+const quickReactMsgId = ref(null)
+const quickEmojis = ['👍', '❤️', '😂', '😮', '😢', '🎉']
+
 let typingTimer = null
 let recorderManager = null
+let searchDebounce = null
 
 const currentUserId = computed(() => userStore.userInfo?.id)
 const messages = computed(() => chatStore.messagesMap[groupId.value] || [])
+
+// 过滤消息（搜索模式下只显示匹配的）
+const filteredMessages = computed(() => {
+  if (!showSearch.value || !searchKeyword.value.trim()) return messages.value
+  const kw = searchKeyword.value.trim().toLowerCase()
+  return messages.value.filter(m => {
+    if (!m.content) return false
+    return m.content.toLowerCase().includes(kw)
+  })
+})
 const unreadTotal = computed(() => {
   let total = 0
   for (const key in chatStore.unreadMap) {
@@ -468,7 +554,23 @@ function onWsRecall(data) {
 }
 
 function onWsReaction(data) {
-  chatStore.handleReaction(data.message_id, data.emoji, data.user_id)
+  // 支持 v2 格式
+  const msg = messages.value.find(m => m.id === data.message_id)
+  if (msg) {
+    if (!msg.reactions) msg.reactions = {}
+    if (data.action === 'remove') {
+      if (msg.reactions[data.emoji]) {
+        const idx = msg.reactions[data.emoji].indexOf(data.user_id)
+        if (idx > -1) msg.reactions[data.emoji].splice(idx, 1)
+        if (msg.reactions[data.emoji].length === 0) delete msg.reactions[data.emoji]
+      }
+    } else {
+      if (!msg.reactions[data.emoji]) msg.reactions[data.emoji] = []
+      if (!msg.reactions[data.emoji].includes(data.user_id)) {
+        msg.reactions[data.emoji].push(data.user_id)
+      }
+    }
+  }
 }
 
 // 发送文字消息
@@ -757,8 +859,79 @@ async function openRedEnvelope(msg) {
 }
 
 // 消息长按
+// 搜索功能
+function toggleSearch() {
+  showSearch.value = !showSearch.value
+  if (!showSearch.value) {
+    searchKeyword.value = ''
+    searchResults.value = []
+    highlightMsgId.value = null
+  }
+}
+
+function clearSearch() {
+  searchKeyword.value = ''
+  searchResults.value = []
+  highlightMsgId.value = null
+}
+
+function onSearchInput() {
+  if (searchDebounce) clearTimeout(searchDebounce)
+  searchDebounce = setTimeout(() => {
+    doSearch()
+  }, 300)
+}
+
+function doSearch() {
+  const kw = searchKeyword.value.trim().toLowerCase()
+  if (!kw) {
+    searchResults.value = []
+    return
+  }
+  searching.value = true
+  searchResults.value = messages.value.filter(m => {
+    if (!m.content) return false
+    return m.content.toLowerCase().includes(kw)
+  })
+  searching.value = false
+}
+
+function jumpToSearchResult(msg) {
+  showSearch.value = false
+  searchKeyword.value = ''
+  searchResults.value = []
+  highlightMsgId.value = msg.id
+  scrollTarget.value = ''
+  nextTick(() => {
+    scrollTarget.value = 'msg-' + msg.id
+    setTimeout(() => {
+      highlightMsgId.value = null
+    }, 2000)
+  })
+}
+
+function highlightText(text, keyword) {
+  if (!keyword || !text) return text
+  const regex = new RegExp(`(${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi')
+  return text.replace(regex, '<mark>$1</mark>')
+}
+
+// 消息引用跳转
+function onScrollToMsg(msgId) {
+  highlightMsgId.value = msgId
+  scrollTarget.value = ''
+  nextTick(() => {
+    scrollTarget.value = 'msg-' + msgId
+    setTimeout(() => {
+      highlightMsgId.value = null
+    }, 2000)
+  })
+}
+
+// 快速表情回应
 function onMsgLongPress(msg) {
   selectedMsg.value = msg
+  quickReactMsgId.value = msg.id
   showMsgMenu.value = true
   // #ifdef H5
   menuStyle.value = {
@@ -767,6 +940,21 @@ function onMsgLongPress(msg) {
     transform: 'translate(-50%, -50%)'
   }
   // #endif
+}
+
+async function sendQuickReaction(msg, emoji) {
+  quickReactMsgId.value = null
+  try {
+    await api.addReactionV2(msg.id, emoji)
+    // 更新本地反应数据
+    if (!msg.reactions) msg.reactions = {}
+    if (!msg.reactions[emoji]) msg.reactions[emoji] = []
+    if (!msg.reactions[emoji].includes(currentUserId.value)) {
+      msg.reactions[emoji].push(currentUserId.value)
+    }
+  } catch (e) {
+    console.error('表情回应失败:', e)
+  }
 }
 
 // 是否显示时间
@@ -795,12 +983,27 @@ function formatMsgTime(time) {
 }
 
 function hasReactions(msg) {
-  return msg.reactions && Object.keys(msg.reactions).length > 0
+  if (!msg.reactions) return false
+  if (Array.isArray(msg.reactions)) return msg.reactions.length > 0
+  return Object.keys(msg.reactions).length > 0
 }
 
 async function toggleReaction(msg, emoji) {
   try {
-    await chatStore.reactMsg(msg.id, emoji)
+    const users = msg.reactions?.[emoji] || []
+    if (users.includes(currentUserId.value)) {
+      // 取消反应
+      await api.removeReactionV2(msg.id, emoji)
+      const idx = users.indexOf(currentUserId.value)
+      if (idx > -1) users.splice(idx, 1)
+      if (users.length === 0) delete msg.reactions[emoji]
+    } else {
+      // 添加反应
+      await api.addReactionV2(msg.id, emoji)
+      if (!msg.reactions) msg.reactions = {}
+      if (!msg.reactions[emoji]) msg.reactions[emoji] = []
+      msg.reactions[emoji].push(currentUserId.value)
+    }
   } catch (e) {
     console.error('反应失败:', e)
   }
@@ -974,6 +1177,12 @@ function reEditMessage(msg) {
 }
 
 .nav-right {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.nav-icon-btn {
   width: 64rpx;
   height: 64rpx;
   display: flex;
@@ -983,6 +1192,149 @@ function reEditMessage(msg) {
 
   &:active {
     opacity: 0.7;
+  }
+}
+
+/* 搜索栏 */
+.search-overlay {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--bg-color);
+  z-index: 99;
+  display: flex;
+  flex-direction: column;
+}
+
+.search-bar {
+  display: flex;
+  align-items: center;
+  padding: 16rpx 24rpx;
+  gap: 12rpx;
+  background: var(--card-bg);
+  border-bottom: 1rpx solid var(--border-color);
+}
+
+.search-icon {
+  font-size: 32rpx;
+  flex-shrink: 0;
+}
+
+.search-input {
+  flex: 1;
+  height: 64rpx;
+  font-size: $font-base;
+  color: var(--text-primary);
+}
+
+.search-clear {
+  font-size: 28rpx;
+  color: var(--text-secondary);
+  padding: 8rpx;
+}
+
+.search-cancel {
+  font-size: $font-sm;
+  color: $primary-color;
+  padding: 8rpx 24rpx;
+  position: absolute;
+  right: 16rpx;
+  top: 16rpx;
+}
+
+.search-results {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.search-count {
+  font-size: $font-xs;
+  color: var(--text-secondary);
+  padding: 12rpx 24rpx;
+  display: block;
+}
+
+.search-results-list {
+  max-height: 600rpx;
+}
+
+.search-result-item {
+  display: flex;
+  flex-direction: column;
+  padding: 16rpx 24rpx;
+  background: var(--card-bg);
+  border-bottom: 1rpx solid var(--border-color);
+  gap: 4rpx;
+
+  &:active {
+    background: var(--bg-color);
+  }
+}
+
+.result-sender {
+  font-size: $font-xs;
+  color: $primary-color;
+  font-weight: 500;
+}
+
+.result-content {
+  font-size: $font-sm;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.result-time {
+  font-size: $font-xs;
+  color: var(--text-secondary);
+}
+
+.search-empty {
+  text-align: center;
+  padding: 60rpx;
+  color: var(--text-secondary);
+  font-size: $font-sm;
+}
+
+/* 消息高亮闪烁 */
+.msg-highlight {
+  animation: highlightFlash 2s ease;
+}
+
+@keyframes highlightFlash {
+  0%, 100% { background: transparent; }
+  10%, 50% { background: rgba(7, 193, 96, 0.15); }
+  70% { background: rgba(7, 193, 96, 0.05); }
+}
+
+/* 快速表情回应栏 */
+.quick-react-bar {
+  display: flex;
+  gap: 4rpx;
+  padding: 8rpx 12rpx;
+  background: var(--card-bg);
+  border-radius: 36rpx;
+  box-shadow: $shadow-base;
+  margin-bottom: 8rpx;
+  align-self: center;
+  animation: scaleIn 0.2s ease;
+}
+
+.quick-react-item {
+  width: 56rpx;
+  height: 56rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36rpx;
+  border-radius: 50%;
+  transition: transform 0.15s;
+
+  &:active {
+    transform: scale(1.3);
+    background: var(--bg-color);
   }
 }
 
@@ -1185,6 +1537,47 @@ function reEditMessage(msg) {
   position: relative;
   word-break: break-all;
   min-width: 80rpx;
+}
+
+/* 引用回复 */
+.reply-quote {
+  display: flex;
+  align-items: stretch;
+  margin-bottom: 12rpx;
+  background: rgba(0,0,0,0.04);
+  border-radius: $radius-sm;
+  overflow: hidden;
+  transition: background $transition-fast;
+  &:active { background: rgba(0,0,0,0.08); }
+}
+
+.reply-quote-bar {
+  width: 6rpx;
+  flex-shrink: 0;
+  background: $primary-color;
+}
+
+.reply-quote-body {
+  flex: 1;
+  padding: 8rpx 12rpx;
+  overflow: hidden;
+}
+
+.reply-sender {
+  font-size: 20rpx;
+  color: $primary-color;
+  font-weight: 500;
+  display: block;
+  margin-bottom: 2rpx;
+}
+
+.reply-snippet {
+  font-size: $font-xs;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
 }
 
 .bubble-self {
