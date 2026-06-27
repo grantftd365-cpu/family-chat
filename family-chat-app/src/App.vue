@@ -73,7 +73,8 @@ page {
 
 /* 暗黑模式 */
 page,
-[data-theme="dark"] {
+[data-theme="dark"],
+.dark-mode {
   --bg-color: #{$bg-color-dark};
   --card-bg: #{$card-bg-dark};
   --text-primary: #{$text-primary-dark};
@@ -83,6 +84,10 @@ page,
   --bubble-self: #{$bubble-self-dark};
   --bubble-other: #{$bubble-other-dark};
   --chat-bg: #{$chat-bg-dark};
+  --agent-dad-color: #1A237E;
+  --agent-mom-color: #880E4F;
+  --agent-grandma-color: #1B5E20;
+  --agent-default-color: #4A148C;
   color: var(--text-primary);
   background-color: var(--bg-color);
 }
@@ -97,6 +102,10 @@ page {
   --bubble-self: #{$bubble-self};
   --bubble-other: #{$bubble-other};
   --chat-bg: #{$chat-bg};
+  --agent-dad-color: #E3F2FD;
+  --agent-mom-color: #FCE4EC;
+  --agent-grandma-color: #E8F5E9;
+  --agent-default-color: #F3E5F5;
 }
 
 /* 通用样式 */

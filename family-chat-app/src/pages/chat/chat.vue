@@ -16,6 +16,21 @@
       </view>
     </view>
 
+    <!-- 群公告 -->
+    <view v-if="announcement && showAnnouncement" class="announcement-bar" @tap="announcementExpanded = !announcementExpanded">
+      <view class="announcement-content">
+        <text class="announcement-icon">📢</text>
+        <view class="announcement-text-wrap">
+          <text class="announcement-label">群公告</text>
+          <text class="announcement-text" :class="{ expanded: announcementExpanded }">{{ announcement }}</text>
+        </view>
+        <text class="announcement-toggle">{{ announcementExpanded ? '收起' : '展开' }}</text>
+      </view>
+      <view class="announcement-close" @tap.stop="showAnnouncement = false">
+        <text>✕</text>
+      </view>
+    </view>
+
     <!-- 消息区域 -->
     <scroll-view
       scroll-y
@@ -38,7 +53,7 @@
         v-for="(msg, index) in messages"
         :key="msg.id || index"
         :id="'msg-' + (msg.id || index)"
-        class="msg-row"
+        class="msg-row msg-anim"
         :class="{ self: msg.sender_id === currentUserId }"
       >
         <!-- 时间分割线 -->
@@ -187,13 +202,15 @@
 
         <!-- 文字输入 / 语音录入 -->
         <view v-if="!voiceMode" class="input-wrap">
-          <input
+          <textarea
             v-model="inputText"
-            type="text"
             class="msg-input"
+            :auto-height="true"
+            :maxlength="-1"
             :adjust-position="true"
             :confirm-hold="true"
             placeholder="输入消息..."
+            :style="{ maxHeight: textareaMaxHeight + 'px' }"
             @confirm="sendTextMessage"
             @input="onInputChange"
           />
@@ -230,12 +247,12 @@
       </view>
 
       <!-- 表情面板 -->
-      <view v-if="showEmoji" class="panel-area slide-up">
+      <view v-show="showEmoji" class="panel-area" :class="{ 'panel-visible': showEmoji }">
         <emoji-panel @select="onEmojiSelect" @delete="onEmojiDelete" />
       </view>
 
       <!-- 更多面板 -->
-      <view v-if="showMore" class="panel-area slide-up">
+      <view v-show="showMore" class="panel-area" :class="{ 'panel-visible': showMore }">
         <view class="more-grid">
           <view class="more-item" @tap="chooseImage">
             <view class="more-icon">🖼️</view>
@@ -314,6 +331,10 @@ const loadingMore = ref(false)
 const hasMore = ref(true)
 const playingVoiceId = ref(null)
 const typingName = ref('')
+const textareaMaxHeight = ref(120) // ~5 lines
+const announcement = ref('')
+const showAnnouncement = ref(true)
+const announcementExpanded = ref(false)
 let typingTimer = null
 let recorderManager = null
 
@@ -343,6 +364,9 @@ onLoad((options) => {
 
   // 加载消息
   loadMessages()
+
+  // 加载群公告
+  loadAnnouncement()
 
   // 监听 WebSocket 消息
   ws.on('message', onWsMessage)
@@ -386,6 +410,13 @@ async function loadMessages() {
     scrollToBottom()
   } catch (e) {
     console.error('加载消息失败:', e)
+  }
+}
+
+function loadAnnouncement() {
+  const group = chatStore.groups.find(g => g.id === groupId.value)
+  if (group && group.announcement) {
+    announcement.value = group.announcement
   }
 }
 
@@ -974,6 +1005,85 @@ function reEditMessage(msg) {
   padding: 0 20rpx;
 }
 
+.msg-anim {
+  animation: fadeInUp 0.3s ease-out;
+}
+
+/* 群公告 */
+.announcement-bar {
+  background: var(--card-bg);
+  border-bottom: 1rpx solid var(--border-color);
+  padding: 16rpx 24rpx;
+  position: relative;
+}
+
+.announcement-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 12rpx;
+}
+
+.announcement-icon {
+  font-size: 32rpx;
+  flex-shrink: 0;
+  margin-top: 2rpx;
+}
+
+.announcement-text-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+.announcement-label {
+  font-size: $font-xs;
+  color: var(--text-secondary);
+  display: block;
+  margin-bottom: 4rpx;
+}
+
+.announcement-text {
+  font-size: $font-sm;
+  color: var(--text-primary);
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.5;
+  transition: all 0.3s ease;
+
+  &.expanded {
+    -webkit-line-clamp: unset;
+    display: block;
+  }
+}
+
+.announcement-toggle {
+  font-size: $font-xs;
+  color: $primary-color;
+  flex-shrink: 0;
+  margin-top: 4rpx;
+}
+
+.announcement-close {
+  position: absolute;
+  top: 12rpx;
+  right: 16rpx;
+  width: 40rpx;
+  height: 40rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  text {
+    font-size: 24rpx;
+    color: var(--text-placeholder);
+  }
+
+  &:active {
+    opacity: 0.6;
+  }
+}
+
 .time-divider {
   display: flex;
   justify-content: center;
@@ -1268,15 +1378,20 @@ function reEditMessage(msg) {
   flex: 1;
   background: var(--bg-color);
   border-radius: $radius-base;
-  padding: 0 20rpx;
-  height: 72rpx;
+  padding: 12rpx 20rpx;
+  min-height: 72rpx;
+  display: flex;
+  align-items: center;
 }
 
 .msg-input {
   width: 100%;
-  height: 72rpx;
+  min-height: 48rpx;
+  max-height: 120rpx;
   font-size: $font-base;
   color: var(--text-primary);
+  line-height: 1.5;
+  overflow-y: auto;
 }
 
 .voice-btn {
@@ -1321,6 +1436,15 @@ function reEditMessage(msg) {
 .panel-area {
   height: 400rpx;
   border-top: 1rpx solid var(--border-color);
+  overflow: hidden;
+  transition: height 0.3s ease, opacity 0.3s ease;
+  opacity: 0;
+  height: 0;
+
+  &.panel-visible {
+    height: 400rpx;
+    opacity: 1;
+  }
 }
 
 .more-grid {

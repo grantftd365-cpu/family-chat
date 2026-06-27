@@ -26,6 +26,11 @@ export const useThemeStore = defineStore('theme', () => {
   function applyTheme() {
     // #ifdef H5
     document.documentElement.setAttribute('data-theme', theme.value)
+    if (theme.value === 'dark') {
+      document.documentElement.classList.add('dark-mode')
+    } else {
+      document.documentElement.classList.remove('dark-mode')
+    }
     // #endif
     // #ifdef APP-PLUS
     plus.nativeUI.setUIStyle?.(theme.value)

@@ -31,12 +31,12 @@
       </view>
 
       <!-- 文字消息 -->
-      <view v-if="msg.msg_type === 'text' || (!msg.msg_type && !msg.media_url)" class="bubble-content" :class="isSelf ? 'bubble-right' : 'bubble-left'">
+      <view v-if="msg.msg_type === 'text' || (!msg.msg_type && !msg.media_url)" class="bubble-content" :class="[isSelf ? 'bubble-right' : 'bubble-left', agentBubbleClass]">
         <text>{{ msg.content }}</text>
       </view>
 
       <!-- 图片消息 -->
-      <image v-else-if="msg.msg_type === 'image'" :src="msg.media_url" class="msg-image" mode="widthFix" @tap="previewImage" />
+      <image v-else-if="msg.msg_type === 'image'" :src="msg.media_url" class="msg-image" mode="widthFix" @tap="previewImage" @longpress="onImageLongPress" />
 
       <!-- 语音消息 -->
       <view v-else-if="msg.msg_type === 'voice'" class="voice-bubble" :class="isSelf ? 'bubble-right' : 'bubble-left'" @tap="playVoice">
@@ -70,7 +70,7 @@
       </view>
 
       <!-- 兜底：文本 -->
-      <view v-else class="bubble-content" :class="isSelf ? 'bubble-right' : 'bubble-left'">
+      <view v-else class="bubble-content" :class="[isSelf ? 'bubble-right' : 'bubble-left', agentBubbleClass]">
         <text>{{ msg.content }}</text>
       </view>
 
@@ -111,16 +111,27 @@ import { computed } from 'vue'
 
 const props = defineProps({
   msg: { type: Object, required: true },
-  selfId: { type: String, default: '' }
+  selfId: { type: String, default: '' },
+  allImageUrls: { type: Array, default: () => [] }
 })
 
-defineEmits(['avatar', 'reaction', 'open-envelope', 'longpress', 'scroll-to-msg', 'retry'])
+defineEmits(['avatar', 'reaction', 'open-envelope', 'longpress', 'scroll-to-msg', 'retry', 'save-image', 'forward-image'])
 
 const isSelf = computed(() => props.msg.sender_id === props.selfId)
 
 const avatarText = computed(() => {
   const av = props.msg.agent_avatar || props.msg.sender_avatar || props.msg.sender_name || '?'
   return av.length > 2 ? av[0] : av
+})
+
+// 数字人个性化气泡颜色
+const agentBubbleClass = computed(() => {
+  if (!props.msg.is_agent) return ''
+  const id = props.msg.sender_id || ''
+  if (id.includes('dad')) return 'bubble-agent-dad'
+  if (id.includes('mom')) return 'bubble-agent-mom'
+  if (id.includes('grandma')) return 'bubble-agent-grandma'
+  return 'bubble-agent-default'
 })
 
 const reactions = computed(() => {
@@ -139,8 +150,51 @@ const reactions = computed(() => {
 
 function previewImage() {
   if (props.msg.media_url) {
-    uni.previewImage({ urls: [props.msg.media_url] })
+    const urls = props.allImageUrls.length > 0 ? props.allImageUrls : [props.msg.media_url]
+    uni.previewImage({
+      current: props.msg.media_url,
+      urls: urls,
+      longPressActions: {
+        itemList: ['保存图片', '转发给朋友', '收藏'],
+        success: (res) => {
+          if (res.tapIndex === 0) {
+            uni.showLoading({ title: '保存中...' })
+            uni.saveImageToPhotosAlbum({
+              filePath: props.msg.media_url,
+              success: () => { uni.showToast({ title: '已保存', icon: 'success' }) },
+              fail: () => { uni.showToast({ title: '保存失败', icon: 'none' }) },
+              complete: () => uni.hideLoading()
+            })
+          } else if (res.tapIndex === 1) {
+            // 转发
+          } else if (res.tapIndex === 2) {
+            uni.showToast({ title: '已收藏', icon: 'success' })
+          }
+        }
+      }
+    })
   }
+}
+
+function onImageLongPress() {
+  uni.showActionSheet({
+    itemList: ['保存图片', '转发给朋友', '收藏'],
+    success: (res) => {
+      if (res.tapIndex === 0) {
+        uni.showLoading({ title: '保存中...' })
+        uni.saveImageToPhotosAlbum({
+          filePath: props.msg.media_url,
+          success: () => { uni.showToast({ title: '已保存', icon: 'success' }) },
+          fail: () => { uni.showToast({ title: '保存失败', icon: 'none' }) },
+          complete: () => uni.hideLoading()
+        })
+      } else if (res.tapIndex === 1) {
+        // 转发
+      } else if (res.tapIndex === 2) {
+        uni.showToast({ title: '已收藏', icon: 'success' })
+      }
+    }
+  })
 }
 
 function playVoice() {
@@ -212,7 +266,13 @@ function formatTime(ts) {
 }
 .bubble-right { background: #95EC69; color: #000; }
 .bubble-left { background: var(--card-bg); color: var(--text-primary); }
-.msg-image { max-width: 360rpx; max-height: 360rpx; border-radius: 8rpx; }
+
+/* 数字人个性化气泡 */
+.bubble-agent-dad { background: var(--agent-dad-color, #E3F2FD) !important; color: #1565C0 !important; }
+.bubble-agent-mom { background: var(--agent-mom-color, #FCE4EC) !important; color: #C62828 !important; }
+.bubble-agent-grandma { background: var(--agent-grandma-color, #E8F5E9) !important; color: #2E7D32 !important; }
+.bubble-agent-default { background: var(--agent-default-color, #F3E5F5) !important; color: #6A1B9A !important; }
+.msg-image { max-width: 360rpx; max-height: 360rpx; border-radius: 8rpx; transition: opacity 0.2s; &:active { opacity: 0.8; } }
 .voice-bubble {
   display: flex; align-items: center; gap: 12rpx; padding: 16rpx 24rpx;
   border-radius: 8rpx; min-width: 160rpx;

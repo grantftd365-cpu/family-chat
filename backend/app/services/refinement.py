@@ -173,9 +173,9 @@ class HumanEssence:
                 if isinstance(old_val, list) and isinstance(new_val, list):
                     combined = list(dict.fromkeys(old_val + new_val))  # 保序去重
                     target[key] = combined[:50]  # 限制大小
-                # 字符串类型：如果旧值为空或很短，直接替换；否则追加
+                # 字符串类型：如果旧值为空，直接替换；否则追加
                 elif isinstance(old_val, str) and isinstance(new_val, str):
-                    if not old_val or len(old_val) < 20:
+                    if not old_val:
                         target[key] = new_val
                     elif new_val and new_val not in old_val:
                         target[key] = f"{old_val}；{new_val}"
