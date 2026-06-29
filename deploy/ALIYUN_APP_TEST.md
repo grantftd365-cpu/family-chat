@@ -129,7 +129,55 @@ npm run dev:app
 
 在模拟器启动后，登录页底部会显示“服务器：...”。如果要临时切换地址，点击该文字，填写 `https://你的域名` 并保存。
 
-## 6. 测试账号与流程
+## 6. 独立 APK 云打包
+
+项目是经典 `uni-app + Vue 3` 架构，可以打包成独立 Android APK。这个 APK 不是浏览器网页测试，也不是 HBuilderX 调试基座；应用资源会随 APK 安装，运行后通过 API/WebSocket 连接阿里云后端。
+
+云打包前先完成 DCloud 前置配置：
+
+1. 在 HBuilderX 登录 DCloud 账号。
+2. 打开 `family-chat-app/src/manifest.json`，用 HBuilderX 的可视化界面重新获取/绑定 DCloud AppID。
+3. 确认 `appid` 不再是占位值 `__UNI__FAMILY_CHAT`，而是 DCloud 分配的 `__UNI__...` 正式应用标识。
+4. 测试 APK 可先用公共证书；准备上架 Android 应用商店时再切换为自有证书。
+
+在本机创建生产环境配置：
+
+```env
+VITE_SERVER_URL=https://grantclaw.com/family-chat
+```
+
+文件路径：`family-chat-app/.env.production`。该文件已被 `.gitignore` 忽略，不要提交真实环境文件。
+
+使用 HBuilderX CLI 触发 Android 云打包：
+
+```powershell
+$project = "C:\path\to\family-chat\family-chat-app"
+& "C:\path\to\HBuilderX\cli.exe" pack `
+  --project $project `
+  --platform android `
+  --android.packagename com.grantclaw.familychat `
+  --android.androidpacktype 1 `
+  --safemode true `
+  --sourceMap false `
+  --ignoreWarnings true
+```
+
+查询云打包状态：
+
+```powershell
+& "C:\path\to\HBuilderX\cli.exe" pack status --project $project
+```
+
+拿到 APK 后安装到模拟器：
+
+```powershell
+adb install -r .\FamilyChat.apk
+adb shell monkey -p com.grantclaw.familychat -c android.intent.category.LAUNCHER 1
+```
+
+后续上架说明：Android 应用商店需要使用自有签名证书重新打包；iOS App Store 仍可走 uni-app/HBuilderX iOS 打包，但需要 Apple Developer 账号、Bundle ID、证书和描述文件。
+
+## 7. 测试账号与流程
 
 1. 登录页点击“注册”，创建第一个用户。
 2. 进入首页后发送文字消息。
@@ -138,11 +186,10 @@ npm run dev:app
 5. 进入“设置 → AI 模型配置”，填入可用 LLM API Key 后测试数字人回复。
 6. 服务器侧看日志：`journalctl -u familychat -f`。
 
-## 7. 常见问题
+## 8. 常见问题
 
 - APP 提示网络失败：确认模拟器能打开 `https://你的域名/api/status`，并检查 ECS 安全组和 Nginx。
 - WebSocket 断开：确认 Nginx `/ws` 配置存在，并且证书域名正确。
 - 500 错误：查看 `journalctl -u familychat -n 100 --no-pager`。
 - AI 不回复：确认 `.env` 里 `LLM_API_KEY`、`LLM_PROVIDER`、`LLM_MODEL` 已配置。
 - 小程序不能请求：微信后台必须配置 request/uploadFile/downloadFile/socket 合法域名，且不能使用 IP 或 HTTP。
-
