@@ -9,26 +9,28 @@
     "build:h5": "uni build -p h5",
     "build:mp-weixin": "uni build -p mp-weixin",
     "build:app": "uni build -p app",
+    "build:app-android": "uni build -p app-android",
+    "build:app-ios": "uni build -p app-ios",
     "dev:app-android": "uni -p app-android",
     "dev:app-ios": "uni -p app-ios"
   },
   "dependencies": {
-    "@dcloudio/uni-app": "3.0.0-4010520250520001",
-    "@dcloudio/uni-app-plus": "3.0.0-4010520250520001",
-    "@dcloudio/uni-components": "3.0.0-4010520250520001",
-    "@dcloudio/uni-h5": "3.0.0-4010520250520001",
-    "@dcloudio/uni-mp-weixin": "3.0.0-4010520250520001",
+    "@dcloudio/uni-app": "3.0.0-alpha-5010420260626001",
+    "@dcloudio/uni-app-plus": "3.0.0-alpha-5010420260626001",
+    "@dcloudio/uni-components": "3.0.0-alpha-5010420260626001",
+    "@dcloudio/uni-h5": "3.0.0-alpha-5010420260626001",
+    "@dcloudio/uni-mp-weixin": "3.0.0-alpha-5010420260626001",
     "vue": "^3.4.38",
     "pinia": "^2.2.2"
   },
   "devDependencies": {
     "@dcloudio/types": "^3.4.12",
-    "@dcloudio/uni-automator": "3.0.0-4010520250520001",
-    "@dcloudio/uni-cli-shared": "3.0.0-4010520250520001",
-    "@dcloudio/uni-stacktracey": "3.0.0-4010520250520001",
-    "@dcloudio/vite-plugin-uni": "3.0.0-4010520250520001",
+    "@dcloudio/uni-automator": "3.0.0-alpha-5010420260626001",
+    "@dcloudio/uni-cli-shared": "3.0.0-alpha-5010420260626001",
+    "@dcloudio/uni-stacktracey": "3.0.0-alpha-5010420260626001",
+    "@dcloudio/vite-plugin-uni": "3.0.0-alpha-5010420260626001",
     "@vue/tsconfig": "^0.5.1",
     "sass": "^1.77.8",
-    "vite": "^5.4.14"
+    "vite": "5.2.8"
   }
 }

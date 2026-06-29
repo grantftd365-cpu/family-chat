@@ -4,28 +4,10 @@
  * 包含 token 自动注入、错误处理、自动重试、请求队列
  */
 import { getToken, removeToken, removeUserInfo } from './storage'
+import { getServerUrl } from './server-config'
 
 /** 基础配置 */
-// 服务器地址：H5 模式使用相对路径，非 H5 从 manifest 配置或环境变量读取
-const _getServerUrl = () => {
-  // #ifdef H5
-  return ''
-  // #endif
-  // #ifndef H5
-  // 优先从 uni-app 的 manifest 配置读取
-  try {
-    const manifest = uni.getStorageSync('server_url')
-    if (manifest) return manifest
-  } catch (e) {}
-  // 从编译时常量读取（在 vite.config.js 中定义）
-  if (typeof __SERVER_URL__ !== 'undefined' && __SERVER_URL__) return __SERVER_URL__
-  // 开发环境默认值
-  return 'http://localhost:8000'
-  // #endif
-}
-
 const CONFIG = {
-  baseUrl: _getServerUrl(),
   timeout: 15000,
   maxRetries: 2,
   retryDelay: 1000,
@@ -59,7 +41,7 @@ function request(options, retryCount = 0) {
     }, timeout + 1000)
 
     uni.request({
-      url: CONFIG.baseUrl + options.url,
+      url: getServerUrl() + options.url,
       method: options.method || 'GET',
       data: options.data,
       header,
@@ -173,7 +155,7 @@ export function uploadAvatar(filePath) {
   return new Promise((resolve, reject) => {
     const token = getToken()
     uni.uploadFile({
-      url: CONFIG.baseUrl + '/api/me/avatar',
+      url: getServerUrl() + '/api/me/avatar',
       filePath,
       name: 'file',
       header: token ? { Authorization: `Bearer ${token}` } : {},
@@ -384,7 +366,7 @@ export function uploadMomentImage(filePath) {
   return new Promise((resolve, reject) => {
     const token = getToken()
     uni.uploadFile({
-      url: CONFIG.baseUrl + '/api/moments/upload',
+      url: getServerUrl() + '/api/moments/upload',
       filePath,
       name: 'file',
       header: token ? { Authorization: `Bearer ${token}` } : {},
@@ -443,7 +425,7 @@ export function uploadVoice(filePath) {
   return new Promise((resolve, reject) => {
     const token = getToken()
     uni.uploadFile({
-      url: CONFIG.baseUrl + '/api/voice/upload',
+      url: getServerUrl() + '/api/voice/upload',
       filePath,
       name: 'file',
       header: token ? { Authorization: `Bearer ${token}` } : {},
@@ -481,7 +463,7 @@ export function uploadVoiceProfile(name, filePath, gender = '') {
   return new Promise((resolve, reject) => {
     const token = getToken()
     uni.uploadFile({
-      url: CONFIG.baseUrl + '/api/voice-profiles/upload',
+      url: getServerUrl() + '/api/voice-profiles/upload',
       filePath,
       name: 'file',
       formData: { name, gender },
@@ -515,7 +497,7 @@ export function synthesizeVoicePreview(text, edgeVoiceId = '', profileId = '') {
   return new Promise((resolve, reject) => {
     const token = getToken()
     uni.uploadFile({
-      url: CONFIG.baseUrl + '/api/voice-profiles/synthesize',
+      url: getServerUrl() + '/api/voice-profiles/synthesize',
       filePath: '',
       name: 'file',
       formData: { text, edge_voice_id: edgeVoiceId, profile_id: profileId },
@@ -546,7 +528,7 @@ export function refineFromVoice(agentId, filePath) {
   return new Promise((resolve, reject) => {
     const token = getToken()
     uni.uploadFile({
-      url: CONFIG.baseUrl + '/api/agents/refine/voice',
+      url: getServerUrl() + '/api/agents/refine/voice',
       filePath,
       name: 'file',
       formData: { agent_id: agentId },
@@ -565,7 +547,7 @@ export function refineFromVideo(agentId, filePath) {
   return new Promise((resolve, reject) => {
     const token = getToken()
     uni.uploadFile({
-      url: CONFIG.baseUrl + '/api/agents/refine/video',
+      url: getServerUrl() + '/api/agents/refine/video',
       filePath,
       name: 'file',
       formData: { agent_id: agentId },
@@ -584,7 +566,7 @@ export function refineFromDocument(agentId, filePath) {
   return new Promise((resolve, reject) => {
     const token = getToken()
     uni.uploadFile({
-      url: CONFIG.baseUrl + '/api/agents/refine/document',
+      url: getServerUrl() + '/api/agents/refine/document',
       filePath,
       name: 'file',
       formData: { agent_id: agentId },

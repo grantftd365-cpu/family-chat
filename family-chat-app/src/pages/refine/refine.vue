@@ -259,8 +259,8 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
-import * as api from '../utils/api'
-import { normalizeList, normalizeEssence, normalizeCompleteness } from '../utils/response'
+import * as api from '../../utils/api'
+import { normalizeList, normalizeEssence, normalizeCompleteness } from '../../utils/response'
 import EssenceRadar from '../../components/essence-radar.vue'
 
 const statusBarHeight = ref(44)

@@ -151,7 +151,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
-import * as api from '../utils/api'
+import * as api from '../../utils/api'
 
 const statusBarHeight = ref(44)
 const availableVoices = ref([])

@@ -156,6 +156,7 @@ family-chat/
 ## 📦 部署
 
 - [部署指南](deploy/README.md) - 完整部署文档
+- [阿里云 + APP 测试](deploy/ALIYUN_APP_TEST.md) - ECS 部署、HTTPS、模拟器联调
 - [OpenClaw 配置](deploy/OPENCLAW_SETUP.md) - AI 助手配置手册
 - [一键部署](deploy/setup.sh) - `bash deploy/setup.sh`
 

@@ -47,6 +47,12 @@
           <text class="item-label">AI 模型配置</text>
           <text class="item-arrow">›</text>
         </view>
+        <view class="settings-item" @tap="showServerConfig">
+          <text class="item-icon">🌐</text>
+          <text class="item-label">服务器连接</text>
+          <text class="item-value">{{ serverUrlLabel }}</text>
+          <text class="item-arrow">›</text>
+        </view>
       </view>
 
       <!-- 个人信息 -->
@@ -93,6 +99,19 @@
       </view>
     </view>
 
+    <!-- 服务器配置弹窗 -->
+    <view v-if="showServerModal" class="modal-mask" @tap="showServerModal = false">
+      <view class="modal-box" @tap.stop>
+        <text class="modal-title">🌐 服务器连接</text>
+        <text class="modal-desc">APP/小程序测试请填写阿里云 HTTPS 地址；H5 同域部署可保持默认。</text>
+        <input v-model="serverForm.url" placeholder="https://你的域名" class="modal-input" />
+        <view class="modal-btns">
+          <view class="modal-btn cancel" @tap="resetServerUrl"><text>恢复默认</text></view>
+          <view class="modal-btn confirm" @tap="saveServerUrlForm"><text>保存</text></view>
+        </view>
+      </view>
+    </view>
+
     <!-- 炼化弹窗 -->
     <view v-if="showRefineModal" class="modal-mask" @tap="showRefineModal = false">
       <view class="modal-box" @tap.stop>
@@ -120,13 +139,17 @@ import { onLoad } from '@dcloudio/uni-app'
 import { useUserStore } from '../../stores/user'
 import { useThemeStore } from '../../stores/theme'
 import * as api from '../../utils/api'
+import { clearServerUrl, getDisplayServerUrl, isLocalServerUrl, saveServerUrl } from '../../utils/server-config'
 
 const userStore = useUserStore()
 const themeStore = useThemeStore()
 const statusBarHeight = ref(44)
 const isDark = ref(false)
 const showLLM = ref(false)
+const showServerModal = ref(false)
 const showRefineModal = ref(false)
+const serverUrlLabel = ref('默认')
+const serverForm = reactive({ url: '' })
 
 const providers = ['deepseek', 'openai', 'zhipu', 'qwen', 'local']
 const providerNames = ['DeepSeek', 'OpenAI', '智谱AI', '通义千问', '本地模型']
@@ -142,8 +165,37 @@ onLoad(() => {
   const sysInfo = uni.getSystemInfoSync()
   statusBarHeight.value = sysInfo.statusBarHeight || 44
   isDark.value = themeStore.theme === 'dark'
+  refreshServerUrlLabel()
   loadAgents()
 })
+
+function refreshServerUrlLabel() {
+  const url = getDisplayServerUrl()
+  serverForm.url = url
+  serverUrlLabel.value = url || '默认'
+}
+
+function showServerConfig() {
+  refreshServerUrlLabel()
+  showServerModal.value = true
+}
+
+function saveServerUrlForm() {
+  const url = saveServerUrl(serverForm.url)
+  showServerModal.value = false
+  refreshServerUrlLabel()
+  uni.showToast({ title: url ? '服务器已保存' : '已使用默认地址', icon: 'success' })
+  if (url && isLocalServerUrl(url)) {
+    uni.showToast({ title: '模拟器测试阿里云请使用公网地址', icon: 'none', duration: 2500 })
+  }
+}
+
+function resetServerUrl() {
+  clearServerUrl()
+  showServerModal.value = false
+  refreshServerUrlLabel()
+  uni.showToast({ title: '已恢复默认', icon: 'success' })
+}
 
 async function loadAgents() {
   try {

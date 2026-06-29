@@ -3,6 +3,7 @@
  * 支持自动重连、心跳检测、消息队列、断线缓存
  */
 import { getToken } from './storage'
+import { getServerUrl, toWebSocketUrl } from './server-config'
 
 /** 连接状态 */
 const STATE = {
@@ -39,15 +40,7 @@ class WsClient {
     return `${protocol}//${location.host}/ws?token=${token}`
     // #endif
     // #ifndef H5
-    // 从存储或编译时常量读取服务器地址
-    let serverUrl = 'http://localhost:8000'
-    try {
-      const stored = uni.getStorageSync('server_url')
-      if (stored) serverUrl = stored
-    } catch (e) {}
-    if (typeof __SERVER_URL__ !== 'undefined' && __SERVER_URL__) serverUrl = __SERVER_URL__
-    // 将 http(s) 转为 ws(s)
-    const wsUrl = serverUrl.replace(/^https?:\/\//, (m) => m === 'https://' ? 'wss://' : 'ws://')
+    const wsUrl = toWebSocketUrl(getServerUrl())
     return `${wsUrl}/ws?token=${token}`
     // #endif
   }

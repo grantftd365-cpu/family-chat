@@ -152,6 +152,21 @@
       <text class="footer-link">《用户协议》</text>
       <text class="footer-text">和</text>
       <text class="footer-link">《隐私政策》</text>
+      <view class="server-config-link" @tap="showServerConfig">
+        <text>服务器：{{ serverUrlLabel }}</text>
+      </view>
+    </view>
+
+    <view v-if="showServerModal" class="modal-mask" @tap="showServerModal = false">
+      <view class="modal-box" @tap.stop>
+        <text class="modal-title">服务器地址</text>
+        <text class="modal-desc">测试阿里云时填写 HTTPS 域名或公网 IP，例如 https://chat.example.com</text>
+        <input v-model="serverForm.url" class="modal-input" placeholder="https://你的域名" />
+        <view class="modal-actions">
+          <view class="modal-btn cancel" @tap="resetServerUrl"><text>恢复默认</text></view>
+          <view class="modal-btn confirm" @tap="saveServerUrlForm"><text>保存</text></view>
+        </view>
+      </view>
     </view>
   </view>
 </template>
@@ -160,6 +175,7 @@
 import { ref, reactive } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { useUserStore } from '../../stores/user'
+import { clearServerUrl, getDisplayServerUrl, isLocalServerUrl, saveServerUrl } from '../../utils/server-config'
 
 const userStore = useUserStore()
 
@@ -168,6 +184,9 @@ const currentTab = ref('login')
 const showPassword = ref(false)
 const loginLoading = ref(false)
 const registerLoading = ref(false)
+const showServerModal = ref(false)
+const serverUrlLabel = ref('默认')
+const serverForm = reactive({ url: '' })
 
 const loginForm = reactive({
   email: '',
@@ -185,11 +204,40 @@ const registerForm = reactive({
 onLoad(() => {
   const sysInfo = uni.getSystemInfoSync()
   statusBarHeight.value = sysInfo.statusBarHeight || 44
+  refreshServerUrlLabel()
   // 已登录则跳转
   if (userStore.isLoggedIn) {
     uni.switchTab({ url: '/pages/index/index' })
   }
 })
+
+function refreshServerUrlLabel() {
+  const url = getDisplayServerUrl()
+  serverForm.url = url
+  serverUrlLabel.value = url || 'H5 同域 / APP 默认本机'
+}
+
+function showServerConfig() {
+  refreshServerUrlLabel()
+  showServerModal.value = true
+}
+
+function saveServerUrlForm() {
+  const url = saveServerUrl(serverForm.url)
+  showServerModal.value = false
+  refreshServerUrlLabel()
+  uni.showToast({ title: url ? '服务器已保存' : '已使用默认地址', icon: 'success' })
+  if (url && isLocalServerUrl(url)) {
+    uni.showToast({ title: '模拟器测试阿里云请使用公网地址', icon: 'none', duration: 2500 })
+  }
+}
+
+function resetServerUrl() {
+  clearServerUrl()
+  showServerModal.value = false
+  refreshServerUrlLabel()
+  uni.showToast({ title: '已恢复默认', icon: 'success' })
+}
 
 async function handleLogin() {
   if (loginLoading.value) return
@@ -466,6 +514,14 @@ function handleWxLogin() {
   flex-wrap: wrap;
 }
 
+.server-config-link {
+  width: 100%;
+  text-align: center;
+  margin-top: 16rpx;
+  font-size: $font-xs;
+  color: $primary-color;
+}
+
 .footer-text {
   font-size: $font-xs;
   color: var(--text-secondary);
@@ -474,5 +530,67 @@ function handleWxLogin() {
 .footer-link {
   font-size: $font-xs;
   color: $primary-color;
+}
+
+.modal-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-box {
+  width: 640rpx;
+  background: var(--card-bg);
+  border-radius: $radius-lg;
+  padding: 40rpx;
+}
+
+.modal-title {
+  display: block;
+  text-align: center;
+  font-size: $font-lg;
+  font-weight: bold;
+  color: var(--text-primary);
+  margin-bottom: 16rpx;
+}
+
+.modal-desc {
+  display: block;
+  font-size: $font-sm;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 24rpx;
+}
+
+.modal-input {
+  height: 88rpx;
+  background: var(--bg-color);
+  border-radius: $radius-base;
+  padding: 0 24rpx;
+  font-size: $font-base;
+  color: var(--text-primary);
+}
+
+.modal-actions {
+  display: flex;
+  gap: 24rpx;
+  margin-top: 28rpx;
+}
+
+.modal-btn {
+  flex: 1;
+  height: 88rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: $radius-base;
+  font-size: $font-base;
+
+  &.cancel { background: var(--bg-color); color: var(--text-secondary); }
+  &.confirm { background: $primary-color; color: #fff; }
 }
 </style>
