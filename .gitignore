@@ -54,3 +54,7 @@ unpackage/
 *.crt
 *.keystore
 *.jks
+
+# === 本地 APK/截图产物 ===
+artifacts/
+_local-certs/

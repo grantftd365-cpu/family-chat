@@ -138,8 +138,8 @@ npm run dev:app
 1. 在 HBuilderX 登录 DCloud 账号。
 2. 打开 DCloud 账号资料页 `https://dev.dcloud.net.cn/pages/user/info`，确认账号已绑定手机号。
 3. 打开 `family-chat-app/src/manifest.json`，用 HBuilderX 的可视化界面重新获取/绑定 DCloud AppID。
-4. 确认 `appid` 不再是占位值 `__UNI__FAMILY_CHAT`，而是 DCloud 分配的 `__UNI__...` 正式应用标识。
-5. 测试 APK 可先用公共证书；准备上架 Android 应用商店时再切换为自有证书。
+4. 确认 `appid` 不再是占位值 `__UNI__FAMILY_CHAT`，当前项目正式 AppID 为 `__UNI__73C711F`。
+5. 新应用已不能使用 Android 公共测试证书；测试 APK 和上架包都建议使用自有证书，包名固定为 `com.grantclaw.familychat`。
 
 如果 CLI 返回 `当前账号尚未绑定手机号` 或 `manifest.json中的AppID无效`，先完成上面的第 2–4 步后再重新打包。
 
@@ -151,16 +151,21 @@ VITE_SERVER_URL=https://grantclaw.com/family-chat
 
 文件路径：`family-chat-app/.env.production`。该文件已被 `.gitignore` 忽略，不要提交真实环境文件。
 
-使用 HBuilderX CLI 触发 Android 云打包：
+使用 HBuilderX CLI 触发 Android 云打包。测试证书文件不要提交到 GitHub，可放在本机 `_local-certs/`：
 
 ```powershell
 $project = "C:\path\to\family-chat\family-chat-app"
+$keystore = "C:\path\to\family-chat\_local-certs\family-chat-test.keystore"
 & "C:\path\to\HBuilderX\cli.exe" pack `
   --project $project `
   --platform android `
   --android.packagename com.grantclaw.familychat `
-  --android.androidpacktype 1 `
-  --safemode true `
+  --android.androidpacktype 0 `
+  --android.certalias familychat `
+  --android.certfile $keystore `
+  --android.certpassword "你的证书密码" `
+  --android.storepassword "你的证书库密码" `
+  --safemode false `
   --sourceMap false `
   --ignoreWarnings true
 ```
@@ -178,7 +183,8 @@ adb install -r .\FamilyChat.apk
 adb shell monkey -p com.grantclaw.familychat -c android.intent.category.LAUNCHER 1
 ```
 
-后续上架说明：Android 应用商店需要使用自有签名证书重新打包；iOS App Store 仍可走 uni-app/HBuilderX iOS 打包，但需要 Apple Developer 账号、Bundle ID、证书和描述文件。
+后续上架说明：Android 应用商店需要使用同一套自有签名证书持续打包；iOS App Store 仍可走 uni-app/HBuilderX iOS 打包，但需要 Apple Developer 账号、Bundle ID、证书和描述文件。
+模拟器兼容性说明：当前 DCloud Android APK 会包含 `armeabi-v7a`、`arm64-v8a`、`x86` 原生库。Windows 模拟器推荐使用普通 4KB page size 的 Android x86 镜像（例如 `system-images;android-29;default;x86`）。不要使用 `ps16k`/16KB page size 镜像测试当前 APK；这类镜像会出现原生库 page-size/alignment 不兼容。纯 `x86_64` 模拟器也可能因为 APK 不含 `x86_64` so 而无法安装。
 
 ## 7. 测试账号与流程
 
