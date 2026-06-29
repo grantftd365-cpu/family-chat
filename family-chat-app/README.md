@@ -112,7 +112,7 @@ family-chat-app/
 ## 📝 注意事项
 
 1. 微信小程序需要在 `manifest.json` 中配置 AppID
-2. 独立 APK 云打包需要登录 DCloud 账号，并在 `manifest.json` 中使用已注册的 DCloud AppID
+2. 独立 APK 云打包需要登录 DCloud 账号、账号绑定手机号，并在 `manifest.json` 中使用已注册的 DCloud AppID
 3. 图片上传和语音功能在小程序中需要用户授权
 4. WebSocket 地址在非 H5 模式下需要手动配置
 

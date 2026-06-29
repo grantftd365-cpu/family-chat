@@ -136,9 +136,12 @@ npm run dev:app
 云打包前先完成 DCloud 前置配置：
 
 1. 在 HBuilderX 登录 DCloud 账号。
-2. 打开 `family-chat-app/src/manifest.json`，用 HBuilderX 的可视化界面重新获取/绑定 DCloud AppID。
-3. 确认 `appid` 不再是占位值 `__UNI__FAMILY_CHAT`，而是 DCloud 分配的 `__UNI__...` 正式应用标识。
-4. 测试 APK 可先用公共证书；准备上架 Android 应用商店时再切换为自有证书。
+2. 打开 DCloud 账号资料页 `https://dev.dcloud.net.cn/pages/user/info`，确认账号已绑定手机号。
+3. 打开 `family-chat-app/src/manifest.json`，用 HBuilderX 的可视化界面重新获取/绑定 DCloud AppID。
+4. 确认 `appid` 不再是占位值 `__UNI__FAMILY_CHAT`，而是 DCloud 分配的 `__UNI__...` 正式应用标识。
+5. 测试 APK 可先用公共证书；准备上架 Android 应用商店时再切换为自有证书。
+
+如果 CLI 返回 `当前账号尚未绑定手机号` 或 `manifest.json中的AppID无效`，先完成上面的第 2–4 步后再重新打包。
 
 在本机创建生产环境配置：
 
