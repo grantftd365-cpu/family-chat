@@ -91,7 +91,7 @@
         </picker>
         <text v-if="apiKeyConfigured" class="modal-desc">API Key 已配置；留空保存不会覆盖，只有输入新 Key 才会更新。</text>
         <input v-model="llmForm.apiKey" type="password" :placeholder="apiKeyConfigured ? '已配置，留空不修改' : 'API Key'" class="modal-input" />
-        <input v-model="llmForm.model" placeholder="模型名称（如 deepseek-chat）" class="modal-input" />
+        <input v-model="llmForm.model" placeholder="模型名称（如 deepseek-v4-flash）" class="modal-input" />
         <input v-model="llmForm.baseUrl" placeholder="Base URL（可选）" class="modal-input" />
         <view class="modal-btns">
           <view class="modal-btn cancel" @tap="showLLM = false"><text>取消</text></view>

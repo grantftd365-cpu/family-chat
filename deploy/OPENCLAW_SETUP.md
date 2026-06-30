@@ -200,7 +200,7 @@ export MIMO_API_KEY="your-api-key"
   agents: {
     defaults: {
       model: {
-        primary: "deepseek/deepseek-chat",
+        primary: "deepseek/deepseek-v4-flash",
       },
     },
   },
@@ -605,7 +605,7 @@ lsof -i :18789
 openclaw config get env
 
 # 2. 测试网络连通性
-curl -s https://api.deepseek.com/v1/models -H "Authorization: Bearer $DEEPSEEK_API_KEY"
+curl -s https://api.deepseek.com/models -H "Authorization: Bearer $DEEPSEEK_API_KEY"
 
 # 3. 检查日志中的错误
 openclaw logs | grep -i "error\|fail\|timeout"

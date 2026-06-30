@@ -105,7 +105,7 @@ sudo nano /opt/family-chat/.env
 
 LLM_PROVIDER=deepseek
 LLM_API_KEY=sk-你的真实DeepSeekKey
-LLM_MODEL=deepseek-chat
+LLM_MODEL=deepseek-v4-flash
 LLM_BASE_URL=
 ```
 

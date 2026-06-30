@@ -123,7 +123,7 @@ async def lifespan(app: FastAPI):
         "provider": os.getenv("LLM_PROVIDER", "deepseek"),
         "api_key": os.getenv("LLM_API_KEY", os.getenv("DEEPSEEK_API_KEY", "")),
         "base_url": os.getenv("LLM_BASE_URL", ""),
-        "model": os.getenv("LLM_MODEL", "deepseek-chat"),
+        "model": os.getenv("LLM_MODEL", "deepseek-v4-flash"),
         "temperature": float(os.getenv("LLM_TEMPERATURE", "0.8")),
     }
     agent_manager = AgentManager(db, llm_config)
@@ -334,7 +334,7 @@ async def list_providers():
     return {
         "providers": [
             {"id": "openai", "name": "OpenAI", "models": ["gpt-4o", "gpt-4o-mini"], "base_url": "https://api.openai.com/v1"},
-            {"id": "deepseek", "name": "DeepSeek", "models": ["deepseek-chat", "deepseek-reasoner"], "base_url": "https://api.deepseek.com/v1"},
+            {"id": "deepseek", "name": "DeepSeek", "models": ["deepseek-v4-flash", "deepseek-v4-pro"], "base_url": "https://api.deepseek.com"},
             {"id": "zhipu", "name": "智谱AI", "models": ["glm-4", "glm-4-flash"], "base_url": "https://open.bigmodel.cn/api/paas/v4"},
             {"id": "qwen", "name": "通义千问", "models": ["qwen-max", "qwen-plus"], "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1"},
             {"id": "local", "name": "本地模型", "models": ["ollama/any"], "base_url": "http://localhost:11434/v1"},

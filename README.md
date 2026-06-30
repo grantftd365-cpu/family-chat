@@ -84,7 +84,7 @@ npm run build:app          # 构建 APP
 ```bash
 LLM_PROVIDER=deepseek      # openai / deepseek / zhipu / qwen / local
 LLM_API_KEY=***
-LLM_MODEL=deepseek-chat
+LLM_MODEL=deepseek-v4-flash
 SECRET_KEY=***
 WX_APPID=***               # 微信小程序（可选）
 WX_SECRET=***              # 微信小程序（可选）

@@ -57,12 +57,12 @@ if [ ! -f .env ]; then
     LLM_CHOICE=${LLM_CHOICE:-1}
 
     case $LLM_CHOICE in
-        1) LLM_PROVIDER="deepseek"; LLM_BASE_URL="https://api.deepseek.com/v1"; LLM_MODEL="deepseek-chat" ;;
+        1) LLM_PROVIDER="deepseek"; LLM_BASE_URL="https://api.deepseek.com"; LLM_MODEL="deepseek-v4-flash" ;;
         2) LLM_PROVIDER="openai"; LLM_BASE_URL="https://api.openai.com/v1"; LLM_MODEL="gpt-4o" ;;
         3) LLM_PROVIDER="zhipu"; LLM_BASE_URL="https://open.bigmodel.cn/api/paas/v4"; LLM_MODEL="glm-4" ;;
         4) LLM_PROVIDER="qwen"; LLM_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"; LLM_MODEL="qwen-max" ;;
         5) LLM_PROVIDER="local"; LLM_BASE_URL="http://localhost:11434/v1"; LLM_MODEL="ollama/any" ;;
-        *) LLM_PROVIDER="deepseek"; LLM_BASE_URL="https://api.deepseek.com/v1"; LLM_MODEL="deepseek-chat" ;;
+        *) LLM_PROVIDER="deepseek"; LLM_BASE_URL="https://api.deepseek.com"; LLM_MODEL="deepseek-v4-flash" ;;
     esac
 
     if [ "$LLM_CHOICE" != "6" ]; then

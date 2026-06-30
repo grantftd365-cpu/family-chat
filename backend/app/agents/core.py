@@ -679,7 +679,7 @@ class DigitalHuman:
 
         urls = {
             "openai": "https://api.openai.com/v1",
-            "deepseek": "https://api.deepseek.com/v1",
+            "deepseek": "https://api.deepseek.com",
             "zhipu": "https://open.bigmodel.cn/api/paas/v4",
             "qwen": "https://dashscope.aliyuncs.com/compatible-mode/v1",
         }
@@ -702,7 +702,10 @@ class DigitalHuman:
                 },
             )
             resp.raise_for_status()
-            return resp.json()["choices"][0]["message"]["content"]
+            message = resp.json()["choices"][0]["message"]
+            content = (message.get("content") or "").strip()
+            reasoning_content = (message.get("reasoning_content") or "").strip()
+            return content or reasoning_content
 
     def reset_consecutive(self):
         self._consecutive = 0

@@ -1280,7 +1280,7 @@ class MultiModalRefinement:
 
         urls = {
             "openai": "https://api.openai.com/v1",
-            "deepseek": "https://api.deepseek.com/v1",
+            "deepseek": "https://api.deepseek.com",
             "zhipu": "https://open.bigmodel.cn/api/paas/v4",
             "qwen": "https://dashscope.aliyuncs.com/compatible-mode/v1",
         }
@@ -1321,6 +1321,9 @@ class MultiModalRefinement:
             raise LLMServiceUnavailable(f"{provider or 'LLM'} 请求失败({resp.status_code}): {detail}")
 
         try:
-            return resp.json()["choices"][0]["message"]["content"]
+            message = resp.json()["choices"][0]["message"]
+            content = (message.get("content") or "").strip()
+            reasoning_content = (message.get("reasoning_content") or "").strip()
+            return content or reasoning_content
         except (KeyError, IndexError, TypeError, ValueError) as exc:
             raise LLMServiceUnavailable("LLM 响应格式异常") from exc

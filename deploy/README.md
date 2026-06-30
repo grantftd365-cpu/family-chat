@@ -136,7 +136,7 @@ pip install -r requirements.txt
 # 必填
 LLM_PROVIDER=deepseek
 LLM_API_KEY=sk-xxxxxxxxxxxx
-LLM_MODEL=deepseek-chat
+LLM_MODEL=deepseek-v4-flash
 SECRET_KEY=your-random-secret-key-here
 
 # 可选：微信小程序登录
