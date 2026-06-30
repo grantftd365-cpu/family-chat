@@ -148,6 +148,8 @@ HOST=0.0.0.0
 PORT=8000
 ```
 
+LLM Key 注意事项：`LLM_API_KEY` 必须是完整真实 Key，不能使用 APP 设置页或日志里显示的 `sk-xxxx***` 脱敏值。修改 `/opt/family-chat/.env` 后执行 `sudo systemctl restart familychat` 生效；如果“炼化数字人”提示 401，优先检查 DeepSeek/LLM Key 是否无效、过期或余额不足。
+
 ### 3. 启动
 
 ```bash

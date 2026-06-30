@@ -89,7 +89,8 @@
             <text class="picker-arrow">▼</text>
           </view>
         </picker>
-        <input v-model="llmForm.apiKey" type="password" placeholder="API Key" class="modal-input" />
+        <text v-if="apiKeyConfigured" class="modal-desc">API Key 已配置；留空保存不会覆盖，只有输入新 Key 才会更新。</text>
+        <input v-model="llmForm.apiKey" type="password" :placeholder="apiKeyConfigured ? '已配置，留空不修改' : 'API Key'" class="modal-input" />
         <input v-model="llmForm.model" placeholder="模型名称（如 deepseek-chat）" class="modal-input" />
         <input v-model="llmForm.baseUrl" placeholder="Base URL（可选）" class="modal-input" />
         <view class="modal-btns">
@@ -154,6 +155,7 @@ const serverForm = reactive({ url: '' })
 const providers = ['deepseek', 'openai', 'zhipu', 'qwen', 'local']
 const providerNames = ['DeepSeek', 'OpenAI', '智谱AI', '通义千问', '本地模型']
 const providerIdx = ref(0)
+const apiKeyConfigured = ref(false)
 const llmForm = reactive({ apiKey: '', model: '', baseUrl: '' })
 
 const agents = ref([])
@@ -216,7 +218,8 @@ function onAgentChange(e) { agentIdx.value = e.detail.value }
 async function showLLMConfig() {
   try {
     const cfg = await api.getLLMConfig()
-    llmForm.apiKey = cfg.api_key || ''
+    apiKeyConfigured.value = !!(cfg.api_key_configured || cfg.api_key_preview || cfg.api_key)
+    llmForm.apiKey = ''
     llmForm.model = cfg.model || ''
     llmForm.baseUrl = cfg.base_url || ''
     const idx = providers.indexOf(cfg.provider)
@@ -227,13 +230,16 @@ async function showLLMConfig() {
 
 async function saveLLM() {
   try {
-    await api.updateLLMConfig({
+    const apiKey = llmForm.apiKey.trim()
+    const payload = {
       provider: providers[providerIdx.value],
-      api_key: llmForm.apiKey,
       model: llmForm.model,
       base_url: llmForm.baseUrl
-    })
+    }
+    if (apiKey && !apiKey.includes('***')) payload.api_key = apiKey
+    await api.updateLLMConfig(payload)
     showLLM.value = false
+    apiKeyConfigured.value = apiKey ? true : apiKeyConfigured.value
     uni.showToast({ title: '保存成功', icon: 'success' })
   } catch (e) {
     uni.showToast({ title: '保存失败', icon: 'none' })

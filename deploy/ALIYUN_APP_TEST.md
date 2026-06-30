@@ -98,6 +98,19 @@ sudo certbot --nginx -d 你的域名
 CORS_ORIGINS=https://你的域名,http://localhost:5173,http://127.0.0.1:5173
 ```
 
+同时确认炼化/聊天使用的 LLM Key 是真实值，不要填 APP 里显示的 `***` 脱敏值：
+
+```bash
+sudo nano /opt/family-chat/.env
+
+LLM_PROVIDER=deepseek
+LLM_API_KEY=sk-你的真实DeepSeekKey
+LLM_MODEL=deepseek-chat
+LLM_BASE_URL=
+```
+
+> APP 里的“AI 模型配置”可用于临时联调；如果页面提示“API Key 已配置”，留空保存不会覆盖旧 Key，只有输入新的完整 Key 才会更新。
+
 重启并验证：
 
 ```bash
@@ -198,6 +211,7 @@ adb shell monkey -p com.grantclaw.familychat -c android.intent.category.LAUNCHER
 ## 8. 常见问题
 
 - APP 提示网络失败：先确认后端 `https://grantclaw.com/family-chat/api/status` 正常；如果只在 Android 模拟器失败，通常是模拟器 DNS 问题。重启模拟器时指定 DNS：`emulator -avd FamilyChat_x86_4KB -dns-server 223.5.5.5,8.8.8.8`，再用 `adb shell ping -c 1 grantclaw.com` 确认域名能解析。
+- 炼化数字人报 401：这通常不是 APP 登录失效，而是 DeepSeek/LLM 上游 Key 无效、过期、余额不足，或误把 `sk-xxxx***` 脱敏值保存成真实 Key。到 `/opt/family-chat/.env` 写入完整 `LLM_API_KEY` 后执行 `sudo systemctl restart familychat`，并用 `journalctl -u familychat -n 100 --no-pager` 查看日志。
 - WebSocket 断开：确认 Nginx `/ws` 配置存在，并且证书域名正确。
 - 500 错误：查看 `journalctl -u familychat -n 100 --no-pager`。
 - AI 不回复：确认 `.env` 里 `LLM_API_KEY`、`LLM_PROVIDER`、`LLM_MODEL` 已配置。

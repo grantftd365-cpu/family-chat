@@ -230,6 +230,10 @@
       <view v-if="refineResult" class="section result-section fade-in">
         <text class="section-title">✨ 炼化结果</text>
         <view class="result-card">
+          <view v-if="refineResult.warning" class="result-row">
+            <text class="result-label">提示</text>
+            <text class="result-value">{{ refineResult.warning }}</text>
+          </view>
           <view v-if="refineResult.traits?.personality_traits" class="result-row">
             <text class="result-label">性格特征</text>
             <text class="result-value">{{ refineResult.traits.personality_traits.join('、') }}</text>
@@ -468,7 +472,7 @@ async function startRefine() {
     }
     if (result) {
       refineResult.value = result
-      uni.showToast({ title: '炼化完成', icon: 'success' })
+      uni.showToast({ title: result.mode === 'basic' ? '基础炼化完成' : '炼化完成', icon: 'success' })
       // 刷新本质数据
       loadEssenceData(selectedAgent.value)
     }
@@ -485,9 +489,9 @@ async function doRefineVoice(filePath) {
   try {
     const result = await api.refineFromVoice(selectedAgent.value, filePath)
     refineResult.value = result
-    uni.showToast({ title: '炼化完成', icon: 'success' })
+    uni.showToast({ title: result.mode === 'basic' ? '基础炼化完成' : '炼化完成', icon: 'success' })
   } catch (e) {
-    uni.showToast({ title: '炼化失败', icon: 'none' })
+    uni.showToast({ title: '炼化失败: ' + (e.message || '未知错误'), icon: 'none' })
   } finally {
     submitting.value = false
   }

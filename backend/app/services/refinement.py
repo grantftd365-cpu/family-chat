@@ -34,6 +34,10 @@ from typing import Optional
 from loguru import logger
 
 
+class LLMServiceUnavailable(Exception):
+    """LLM 服务当前不可用，炼化流程可降级为基础模式。"""
+
+
 # ==================== 七层维度定义 ====================
 
 COGNITIVE_DIMENSIONS = {
@@ -263,10 +267,9 @@ class MultiModalRefinement:
         essence = await self._load_essence(agent_id)
         analysis = {"source": "text", "length": len(text)}
 
-        # LLM 深度分析
-        prompt = self._build_essence_extraction_prompt("text", text, essence)
-        llm_result = await self._call_llm(prompt)
-        extracted = self._parse_json(llm_result)
+        extracted, llm_fallback, fallback_reason = await self._extract_with_llm_or_basic(
+            "text", text, essence
+        )
 
         # 智能合并
         essence.merge(extracted, source="text")
@@ -285,6 +288,7 @@ class MultiModalRefinement:
             "extracted_layers": {k: v for k, v in extracted.items() if v},
             "completeness": completeness,
             "overall_completeness": round(sum(completeness.values()) / len(completeness), 1),
+            **self._mode_payload(llm_fallback, fallback_reason),
         }
 
     async def refine_from_voice(self, agent_id: str, audio_path: str) -> dict:
@@ -298,11 +302,12 @@ class MultiModalRefinement:
         transcript = await self._transcribe_audio(audio_path)
 
         extracted = {}
+        llm_fallback = False
+        fallback_reason = ""
         if transcript:
-            # 3. 从转录文本提取七层维度
-            prompt = self._build_essence_extraction_prompt("voice", transcript, essence)
-            llm_result = await self._call_llm(prompt)
-            extracted = self._parse_json(llm_result)
+            extracted, llm_fallback, fallback_reason = await self._extract_with_llm_or_basic(
+                "voice", transcript, essence
+            )
 
         # 4. 音色特征写入语言层
         if voice_features:
@@ -325,6 +330,7 @@ class MultiModalRefinement:
             "voice_features": voice_features,
             "extracted_layers": {k: v for k, v in extracted.items() if v},
             "completeness": essence.get_completeness(),
+            **self._mode_payload(llm_fallback, fallback_reason),
         }
 
     async def refine_from_video(self, agent_id: str, video_path: str) -> dict:
@@ -349,9 +355,9 @@ class MultiModalRefinement:
             return {"success": False, "error": "文档解析失败或内容为空"}
 
         essence = await self._load_essence(agent_id)
-        prompt = self._build_essence_extraction_prompt("document", content[:8000], essence)
-        llm_result = await self._call_llm(prompt)
-        extracted = self._parse_json(llm_result)
+        extracted, llm_fallback, fallback_reason = await self._extract_with_llm_or_basic(
+            "document", content[:8000], essence
+        )
 
         # 文档炼化特别关注知识层
         if content:
@@ -371,6 +377,7 @@ class MultiModalRefinement:
             "content_preview": content[:500],
             "extracted_layers": {k: v for k, v in extracted.items() if v},
             "completeness": essence.get_completeness(),
+            **self._mode_payload(llm_fallback, fallback_reason),
         }
 
     async def refine_from_chat_history(self, agent_id: str,
@@ -398,9 +405,9 @@ class MultiModalRefinement:
             f"{m.get('sender_name', '未知')}: {m.get('content', '')}"
             for m in messages[-200:]
         ])
-        prompt = self._build_essence_extraction_prompt("chat_history", chat_text, essence, patterns)
-        llm_result = await self._call_llm(prompt)
-        llm_extracted = self._parse_json(llm_result)
+        llm_extracted, llm_fallback, fallback_reason = await self._extract_with_llm_or_basic(
+            "chat_history", chat_text, essence, patterns
+        )
 
         # 合并所有分析结果
         combined = {
@@ -429,6 +436,7 @@ class MultiModalRefinement:
             "extracted_layers": {k: v for k, v in combined.items() if v},
             "completeness": essence.get_completeness(),
             "overall_completeness": round(sum(essence.get_completeness().values()) / 7, 1),
+            **self._mode_payload(llm_fallback, fallback_reason),
         }
 
     async def refine_from_self_description(self, agent_id: str,
@@ -453,9 +461,9 @@ class MultiModalRefinement:
 
         # 自我描述直接映射到深层维度
         description_text = "\n".join([f"【{k}】{v}" for k, v in answers.items() if v])
-        prompt = self._build_essence_extraction_prompt("self_description", description_text, essence)
-        llm_result = await self._call_llm(prompt)
-        extracted = self._parse_json(llm_result)
+        extracted, llm_fallback, fallback_reason = await self._extract_with_llm_or_basic(
+            "self_description", description_text, essence
+        )
 
         # 自我描述的权重最高
         for layer_name, layer_data in extracted.items():
@@ -482,6 +490,7 @@ class MultiModalRefinement:
             "extracted_layers": {k: v for k, v in extracted.items() if v},
             "completeness": essence.get_completeness(),
             "overall_completeness": round(sum(essence.get_completeness().values()) / 7, 1),
+            **self._mode_payload(llm_fallback, fallback_reason),
         }
 
     async def refine_from_wechat_profile(self, agent_id: str,
@@ -542,6 +551,161 @@ class MultiModalRefinement:
         return sessions
 
     # ==================== 内部方法：七层提取 ====================
+
+    async def _extract_with_llm_or_basic(self, source_type: str, content: str,
+                                         essence: HumanEssence,
+                                         patterns: Optional[dict] = None) -> tuple[dict, bool, str]:
+        prompt = self._build_essence_extraction_prompt(source_type, content, essence, patterns)
+        try:
+            llm_result = await self._call_llm(prompt)
+            extracted = self._parse_json(llm_result)
+            if extracted:
+                return extracted, False, ""
+            fallback_reason = "LLM 返回内容无法解析为 JSON"
+        except LLMServiceUnavailable as exc:
+            fallback_reason = str(exc)
+
+        logger.warning(f"LLM 深度炼化不可用，已切换基础炼化 [{source_type}]: {fallback_reason}")
+        return self._build_basic_extraction(source_type, content, patterns), True, fallback_reason
+
+    def _mode_payload(self, llm_fallback: bool, fallback_reason: str) -> dict:
+        if not llm_fallback:
+            return {"mode": "llm"}
+        return {
+            "mode": "basic",
+            "warning": f"LLM 深度炼化暂不可用，已使用基础炼化。原因：{fallback_reason}",
+        }
+
+    def _build_basic_extraction(self, source_type: str, content: str,
+                                patterns: Optional[dict] = None) -> dict:
+        text = re.sub(r"\s+", " ", content or "").strip()
+        if not text:
+            return {}
+
+        sentences = [
+            sentence.strip()
+            for sentence in re.split(r"[。！？!?\n]+", content)
+            if sentence.strip()
+        ]
+        avg_sentence_length = sum(len(sentence) for sentence in sentences) / max(len(sentences), 1)
+        source_names = {
+            "text": "文字资料",
+            "voice": "语音转写",
+            "document": "文档资料",
+            "chat_history": "聊天记录",
+            "self_description": "自我描述",
+        }
+
+        value_matches = self._match_keyword_labels(text, [
+            (["家人", "家庭", "父母", "孩子", "亲人", "陪伴"], "家庭连接"),
+            (["成长", "学习", "进步", "提升", "反思"], "持续成长"),
+            (["诚信", "信任", "靠谱", "承诺"], "信任与诚信"),
+            (["责任", "担当", "负责"], "责任感"),
+            (["自由", "独立", "选择"], "独立自主"),
+            (["健康", "平安", "安全"], "健康与安全"),
+            (["事业", "工作", "项目", "创业"], "事业成就"),
+        ])
+        expertise_matches = self._match_keyword_labels(text, [
+            (["技术", "代码", "开发", "系统", "AI", "人工智能"], "技术与 AI"),
+            (["管理", "团队", "协作", "项目"], "团队与项目管理"),
+            (["教育", "学习", "课程", "培训"], "教育学习"),
+            (["家庭", "育儿", "亲子"], "家庭生活"),
+            (["财务", "投资", "商业", "生意"], "商业财务"),
+        ])
+        joy_matches = self._match_keyword_labels(text, [
+            (["喜欢", "热爱", "开心", "快乐"], "做喜欢且有意义的事"),
+            (["家人", "陪伴", "孩子", "父母"], "与家人相处"),
+            (["完成", "成功", "做到", "实现"], "目标达成"),
+        ])
+        fear_matches = self._match_keyword_labels(text, [
+            (["害怕", "担心", "焦虑", "不安"], "对不确定性较敏感"),
+            (["失去", "离开", "孤独"], "在意关系失去"),
+            (["失败", "犯错", "压力"], "在意失败与压力"),
+        ])
+
+        sentence_structures = []
+        question_rate = (patterns or {}).get("question_rate", 0)
+        exclamation_rate = (patterns or {}).get("exclamation_rate", 0)
+        if question_rate > 0.15 or "？" in text or "?" in text:
+            sentence_structures.append("常用提问式表达")
+        if exclamation_rate > 0.15 or "！" in text or "!" in text:
+            sentence_structures.append("情绪表达直接")
+        if avg_sentence_length < 18:
+            sentence_structures.append("短句表达为主")
+        elif avg_sentence_length > 45:
+            sentence_structures.append("长句叙述较多")
+        if not sentence_structures:
+            sentence_structures.append("陈述表达为主")
+
+        cognitive_style = "从个人经历和现实场景出发"
+        if any(keyword in text for keyword in ["分析", "逻辑", "原因", "计划", "步骤"]):
+            cognitive_style = "偏理性分析，习惯拆解原因和步骤"
+        elif any(keyword in text for keyword in ["感觉", "直觉", "情绪", "喜欢"]):
+            cognitive_style = "重视直觉和真实感受"
+
+        conflict_style = "倾向通过沟通维护关系"
+        if any(keyword in text for keyword in ["吵", "冲突", "生气", "争执"]):
+            conflict_style = "面对冲突时情绪敏感，需要明确沟通"
+
+        extraction = {
+            "cognitive": {
+                "thinking_style": cognitive_style,
+                "problem_solving": "先抓重点，再结合经验推进" if len(text) > 80 else "基于直接信息快速判断",
+            },
+            "knowledge": {
+                "expertise_domains": expertise_matches,
+                "curiosity_directions": ["继续补充个人经历和家庭互动细节"],
+            },
+            "emotional": {
+                "joy_sources": joy_matches,
+                "fear_patterns": fear_matches,
+            },
+            "linguistic": {
+                "sentence_structures": sentence_structures,
+                "vocabulary_level": "丰富" if len(set(text)) / max(len(text), 1) > 0.35 else "中等",
+                "rhythm_pattern": "短句快节奏" if avg_sentence_length < 18 else "叙述型节奏",
+                "metaphor_style": "会使用类比表达" if any(keyword in text for keyword in ["像", "仿佛", "如同"]) else "直接表达为主",
+            },
+            "values": {
+                "core_values": value_matches,
+                "life_philosophy": "重视真实经历中的关系、责任和成长" if value_matches else "待通过更多资料深化",
+                "priority_order": value_matches[:5],
+            },
+            "relational": {
+                "intimacy_style": "重视稳定亲密的家庭连接" if "家" in text else "待观察",
+                "conflict_style": conflict_style,
+                "care_pattern": "通过陪伴、沟通和承担责任表达关心" if any(keyword in text for keyword in ["家", "陪伴", "关心", "照顾"]) else "待观察",
+            },
+            "narrative": {
+                "life_chapters": [f"来自{source_names.get(source_type, source_type)}的个人资料片段"],
+                "future_vision": "希望持续成长并照顾好重要关系" if any(keyword in text for keyword in ["未来", "希望", "想要", "目标"]) else "待补充",
+            },
+        }
+
+        if any(keyword in text for keyword in ["骄傲", "自豪", "成就"]):
+            extraction["narrative"]["proud_moments"] = ["提到让自己骄傲或有成就感的经历"]
+        if any(keyword in text for keyword in ["遗憾", "后悔", "错过"]):
+            extraction["narrative"]["regrets"] = ["提到遗憾或错过的经历"]
+
+        return self._drop_empty_extraction(extraction)
+
+    def _match_keyword_labels(self, text: str, rules: list[tuple[list[str], str]]) -> list[str]:
+        matches = []
+        for keywords, label in rules:
+            if any(keyword in text for keyword in keywords):
+                matches.append(label)
+        return matches
+
+    def _drop_empty_extraction(self, extraction: dict) -> dict:
+        cleaned = {}
+        for layer_name, layer_data in extraction.items():
+            cleaned_layer = {
+                key: value for key, value in layer_data.items()
+                if value not in ("", [], {}, None)
+            }
+            if cleaned_layer:
+                cleaned[layer_name] = cleaned_layer
+        return cleaned
 
     def _build_essence_extraction_prompt(self, source_type: str, content: str,
                                           essence: HumanEssence,
@@ -1108,9 +1272,11 @@ class MultiModalRefinement:
         """调用 LLM"""
         import httpx
         cfg = self.llm_config
-        api_key = cfg.get("api_key", "")
-        if not api_key:
-            raise ValueError("LLM API Key 未配置")
+        api_key = (cfg.get("api_key") or "").strip()
+        if not api_key or "***" in api_key or api_key.startswith("sk-your"):
+            raise LLMServiceUnavailable(
+                "LLM API Key 未配置或仍是占位/脱敏值，请在服务器 .env 配置有效的 LLM_API_KEY/DEEPSEEK_API_KEY"
+            )
 
         urls = {
             "openai": "https://api.openai.com/v1",
@@ -1118,20 +1284,43 @@ class MultiModalRefinement:
             "zhipu": "https://open.bigmodel.cn/api/paas/v4",
             "qwen": "https://dashscope.aliyuncs.com/compatible-mode/v1",
         }
-        base_url = cfg.get("base_url") or urls.get(cfg.get("provider", ""), "")
+        provider = cfg.get("provider", "")
+        base_url = (cfg.get("base_url") or urls.get(provider, "")).rstrip("/")
         if not base_url:
-            raise ValueError("LLM Base URL 未配置")
+            raise LLMServiceUnavailable("LLM Base URL 未配置")
 
         async with httpx.AsyncClient(timeout=90.0) as client:
-            resp = await client.post(
-                f"{base_url}/chat/completions",
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                json={
-                    "model": cfg.get("model", "gpt-4o"),
-                    "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0.7,
-                    "max_tokens": 4096,
-                },
+            try:
+                resp = await client.post(
+                    f"{base_url}/chat/completions",
+                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                    json={
+                        "model": cfg.get("model", "gpt-4o"),
+                        "messages": [{"role": "user", "content": prompt}],
+                        "temperature": cfg.get("temperature", 0.7),
+                        "max_tokens": 4096,
+                    },
+                )
+            except httpx.TimeoutException as exc:
+                raise LLMServiceUnavailable("LLM 服务请求超时，请稍后重试") from exc
+            except httpx.HTTPError as exc:
+                raise LLMServiceUnavailable(f"LLM 服务连接失败: {exc}") from exc
+
+        if resp.status_code == 401:
+            raise LLMServiceUnavailable(
+                f"{provider or 'LLM'} API Key 无效或已过期，请重新配置有效 Key 后重启服务"
             )
-            resp.raise_for_status()
+        if resp.status_code == 403:
+            raise LLMServiceUnavailable(f"{provider or 'LLM'} API Key 无权限访问当前模型")
+        if resp.status_code == 429:
+            raise LLMServiceUnavailable(f"{provider or 'LLM'} 接口限流或余额不足")
+        if resp.status_code >= 500:
+            raise LLMServiceUnavailable(f"{provider or 'LLM'} 服务暂时不可用({resp.status_code})")
+        if resp.status_code >= 400:
+            detail = resp.text[:200]
+            raise LLMServiceUnavailable(f"{provider or 'LLM'} 请求失败({resp.status_code}): {detail}")
+
+        try:
             return resp.json()["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError, ValueError) as exc:
+            raise LLMServiceUnavailable("LLM 响应格式异常") from exc

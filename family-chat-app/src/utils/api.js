@@ -103,6 +103,16 @@ function request(options, retryCount = 0) {
   })
 }
 
+function parseResponseData(data) {
+  if (typeof data !== 'string') return data
+  try { return JSON.parse(data) } catch (e) { return data }
+}
+
+function getResponseErrorMessage(res, fallback = '请求失败') {
+  const data = parseResponseData(res.data)
+  return data?.detail || data?.message || data?.error || `${fallback}(${res.statusCode})`
+}
+
 /** GET 请求 */
 function get(url, data = {}) {
   return request({ url, method: 'GET', data })
@@ -534,8 +544,8 @@ export function refineFromVoice(agentId, filePath) {
       formData: { agent_id: agentId },
       header: token ? { Authorization: `Bearer ${token}` } : {},
       success: (res) => {
-        if (res.statusCode === 200) resolve(JSON.parse(res.data))
-        else reject(new Error('炼化失败'))
+        if (res.statusCode === 200) resolve(parseResponseData(res.data))
+        else reject(new Error(getResponseErrorMessage(res, '炼化失败')))
       },
       fail: (err) => reject(new Error(err.errMsg || '炼化失败'))
     })
@@ -553,8 +563,8 @@ export function refineFromVideo(agentId, filePath) {
       formData: { agent_id: agentId },
       header: token ? { Authorization: `Bearer ${token}` } : {},
       success: (res) => {
-        if (res.statusCode === 200) resolve(JSON.parse(res.data))
-        else reject(new Error('炼化失败'))
+        if (res.statusCode === 200) resolve(parseResponseData(res.data))
+        else reject(new Error(getResponseErrorMessage(res, '炼化失败')))
       },
       fail: (err) => reject(new Error(err.errMsg || '炼化失败'))
     })
@@ -572,8 +582,8 @@ export function refineFromDocument(agentId, filePath) {
       formData: { agent_id: agentId },
       header: token ? { Authorization: `Bearer ${token}` } : {},
       success: (res) => {
-        if (res.statusCode === 200) resolve(JSON.parse(res.data))
-        else reject(new Error('炼化失败'))
+        if (res.statusCode === 200) resolve(parseResponseData(res.data))
+        else reject(new Error(getResponseErrorMessage(res, '炼化失败')))
       },
       fail: (err) => reject(new Error(err.errMsg || '炼化失败'))
     })

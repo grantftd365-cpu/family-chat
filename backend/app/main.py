@@ -296,19 +296,24 @@ class LLMConfigReq(BaseModel):
 
 @app.post("/api/config/llm")
 async def update_llm_config(req: LLMConfigReq, user=Depends(get_current_user)):
-    global agent_manager
+    global agent_manager, refinement_service
     new_config = {}
     if req.provider:
         new_config["provider"] = req.provider
-    if req.api_key:
-        new_config["api_key"] = req.api_key
+    api_key = (req.api_key or "").strip()
+    if api_key and "***" not in api_key:
+        new_config["api_key"] = api_key
+    elif api_key:
+        logger.warning("已忽略脱敏 API Key，避免覆盖真实 LLM 配置")
     if req.base_url:
-        new_config["base_url"] = req.base_url
+        new_config["base_url"] = req.base_url.strip()
     if req.model:
-        new_config["model"] = req.model
+        new_config["model"] = req.model.strip()
     if req.temperature:
         new_config["temperature"] = req.temperature
     agent_manager.llm_config.update(new_config)
+    if refinement_service:
+        refinement_service.llm_config.update(new_config)
     for agent in agent_manager.agents.values():
         agent.llm_config = agent_manager.llm_config
     return {"status": "ok"}
@@ -317,8 +322,10 @@ async def update_llm_config(req: LLMConfigReq, user=Depends(get_current_user)):
 @app.get("/api/config/llm")
 async def get_llm_config(user=Depends(get_current_user)):
     cfg = agent_manager.llm_config.copy()
-    if cfg.get("api_key"):
-        cfg["api_key"] = cfg["api_key"][:8] + "***"
+    api_key = cfg.get("api_key") or ""
+    cfg["api_key_configured"] = bool(api_key)
+    cfg["api_key_preview"] = api_key[:8] + "***" if api_key else ""
+    cfg["api_key"] = ""
     return cfg
 
 

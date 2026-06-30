@@ -90,6 +90,13 @@
         </view>
 
         <!-- 炼化结果详情 -->
+        <view v-if="result.warning" class="q-traits">
+          <text class="traits-title">提示</text>
+          <view class="trait-row">
+            <text class="trait-value">{{ result.warning }}</text>
+          </view>
+        </view>
+
         <view v-if="result.traits" class="q-traits">
           <text class="traits-title">提取的特征</text>
           <view v-if="result.traits.personality_traits" class="trait-row">
@@ -244,16 +251,18 @@ async function submitQuestionnaire() {
 
   submitting.value = true
   try {
-    // 构建答案数组
-    const answersList = questions.value.map((q, i) => ({
-      question: q.question || q.label || q,
-      answer: answers.value[q.id || i] || ''
-    })).filter(a => a.answer && a.answer.trim())
+    // 构建后端需要的问答字典: { "问题": "答案" }
+    const answersMap = {}
+    questions.value.forEach((q, i) => {
+      const question = q.question || q.label || q
+      const answer = (answers.value[q.id || i] || '').trim()
+      if (answer) answersMap[question] = answer
+    })
 
-    const res = await api.refineFromSelfDescription(agentId.value, answersList)
+    const res = await api.refineFromSelfDescription(agentId.value, answersMap)
     result.value = res
     submitted.value = true
-    uni.showToast({ title: '炼化完成', icon: 'success' })
+    uni.showToast({ title: res.mode === 'basic' ? '基础炼化完成' : '炼化完成', icon: 'success' })
   } catch (e) {
     uni.showToast({ title: '炼化失败: ' + (e.message || '未知错误'), icon: 'none' })
   } finally {
