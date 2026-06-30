@@ -223,6 +223,8 @@ class AgentMemory:
             (["孩子", "父母", "老婆", "老公", "家", "家庭"], "家庭关系"),
             (["累", "压力", "焦虑", "担心", "睡", "休息"], "情绪与压力"),
             (["吃", "饭", "烧烤", "东北", "回家", "周末"], "生活日常"),
+            (["照片", "图片", "旧照", "合影", "自拍", "截图", "相册", "人物", "脸", "图片识别"], "家庭照片/视觉记忆"),
+            (["语音", "语音识别", "转写", "音频"], "语音记忆"),
         ]
         topics = []
         lowered = text.lower()
@@ -378,6 +380,9 @@ class AgentMemory:
             importance = max(importance, 0.72)
         if speaker_is_agent:
             importance = max(importance, 0.74)
+        if msg_type in ("image", "voice"):
+            importance = max(importance, 0.76)
+            tags.append("media_memory")
 
         memory_id = await self.add(
             memory_content,
@@ -1589,10 +1594,11 @@ class AgentManager:
         """处理群消息"""
         replies = []
         
-        # 图片/语音消息转为文字描述
-        if msg_type == "image":
+        # 图片/语音如果已经有识别文本，则保留；否则降级为占位描述。
+        content = (content or "").strip()
+        if msg_type == "image" and (not content or content.startswith("/api/") or content.startswith("http")):
             content = f"[{sender_name} 发了一张图片]"
-        elif msg_type == "voice":
+        elif msg_type == "voice" and (not content or content.startswith("/api/") or content.startswith("http")):
             content = f"[{sender_name} 发了一条语音消息]"
 
         mentioned_ids, has_explicit_mentions = self._mentioned_agent_ids(content)

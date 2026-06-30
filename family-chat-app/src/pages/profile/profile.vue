@@ -11,13 +11,13 @@
     <view class="user-card" @tap="goEditProfile">
       <view class="user-avatar">
         <image
-          v-if="userInfo?.avatar"
-          :src="userInfo.avatar"
+          v-if="userInfo?.avatar_url"
+          :src="api.toAbsoluteMediaUrl(userInfo.avatar_url)"
           class="avatar-img"
           mode="aspectFill"
         />
         <view v-else class="avatar-placeholder">
-          <text>{{ (userInfo?.nickname || '?')[0] }}</text>
+          <text>{{ userInfo?.avatar || (userInfo?.nickname || '?')[0] }}</text>
         </view>
       </view>
       <view class="user-info">
@@ -89,6 +89,7 @@ import { ref, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { useUserStore } from '../../stores/user'
 import { useThemeStore } from '../../stores/theme'
+import * as api from '../../utils/api'
 
 const userStore = useUserStore()
 const themeStore = useThemeStore()
@@ -125,11 +126,18 @@ function goVoiceProfiles() {
 }
 
 function goCards() {
-  uni.showToast({ title: '卡包功能开发中', icon: 'none' })
+  uni.navigateTo({ url: '/pages/favorites/favorites' })
 }
 
 function goEmoji() {
-  uni.showToast({ title: '表情功能开发中', icon: 'none' })
+  uni.showModal({
+    title: '表情',
+    content: '表情面板已经集成在聊天输入框，进入任意聊天点击 😊 即可使用。',
+    confirmText: '去聊天',
+    success: (res) => {
+      if (res.confirm) uni.switchTab({ url: '/pages/index/index' })
+    }
+  })
 }
 
 function goSettings() {
@@ -137,7 +145,7 @@ function goSettings() {
 }
 
 function goAgentRefine() {
-  uni.showToast({ title: '数字人炼化功能开发中', icon: 'none' })
+  uni.navigateTo({ url: '/pages/refine/refine' })
 }
 </script>
 

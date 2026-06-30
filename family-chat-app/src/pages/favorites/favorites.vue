@@ -71,7 +71,7 @@ async function onRefresh() {
 
 function onTap(fav) {
   if (fav.msg_type === 'image' && fav.media_url) {
-    uni.previewImage({ urls: [fav.media_url] })
+    uni.previewImage({ urls: [api.toAbsoluteMediaUrl(fav.media_url)] })
   }
 }
 

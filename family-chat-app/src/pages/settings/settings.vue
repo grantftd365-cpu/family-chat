@@ -79,6 +79,25 @@
       </view>
     </scroll-view>
 
+
+
+    <!-- 编辑资料弹窗 -->
+    <view v-if="showProfileModal" class="modal-mask" @tap="showProfileModal = false">
+      <view class="modal-box" @tap.stop>
+        <text class="modal-title">👤 编辑资料</text>
+        <text class="modal-desc">昵称、头像符号、签名会同步到聊天资料</text>
+        <input v-model="profileForm.nickname" placeholder="昵称" class="modal-input" />
+        <input v-model="profileForm.avatar" placeholder="头像符号，如 😀" class="modal-input" />
+        <input v-model="profileForm.signature" placeholder="个性签名" class="modal-input" />
+        <input v-model="profileForm.gender" placeholder="性别" class="modal-input" />
+        <input v-model="profileForm.region" placeholder="地区" class="modal-input" />
+        <view class="modal-btns">
+          <view class="modal-btn cancel" @tap="showProfileModal = false"><text>取消</text></view>
+          <view class="modal-btn confirm" @tap="saveProfile"><text>保存</text></view>
+        </view>
+      </view>
+    </view>
+
     <!-- LLM 配置弹窗 -->
     <view v-if="showLLM" class="modal-mask" @tap="showLLM = false">
       <view class="modal-box" @tap.stop>
@@ -135,7 +154,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { useUserStore } from '../../stores/user'
 import { useThemeStore } from '../../stores/theme'
@@ -149,8 +168,10 @@ const isDark = ref(false)
 const showLLM = ref(false)
 const showServerModal = ref(false)
 const showRefineModal = ref(false)
+const showProfileModal = ref(false)
 const serverUrlLabel = ref('默认')
 const serverForm = reactive({ url: '' })
+const profileForm = reactive({ nickname: '', avatar: '', signature: '', gender: '', region: '' })
 
 const providers = ['deepseek', 'openai', 'zhipu', 'qwen', 'local']
 const providerNames = ['DeepSeek', 'OpenAI', '智谱AI', '通义千问', '本地模型']
@@ -266,7 +287,33 @@ async function doRefine() {
 }
 
 function showEditProfile() {
-  uni.showToast({ title: '编辑资料', icon: 'none' })
+  const info = userStore.userInfo || {}
+  profileForm.nickname = info.nickname || ''
+  profileForm.avatar = info.avatar || ''
+  profileForm.signature = info.signature || ''
+  profileForm.gender = info.gender || ''
+  profileForm.region = info.region || ''
+  showProfileModal.value = true
+}
+
+async function saveProfile() {
+  if (!profileForm.nickname.trim()) {
+    uni.showToast({ title: '请输入昵称', icon: 'none' })
+    return
+  }
+  try {
+    await userStore.updateProfile({
+      nickname: profileForm.nickname.trim(),
+      avatar: profileForm.avatar.trim() || '😀',
+      signature: profileForm.signature.trim(),
+      gender: profileForm.gender.trim(),
+      region: profileForm.region.trim()
+    })
+    showProfileModal.value = false
+    uni.showToast({ title: '资料已保存', icon: 'success' })
+  } catch (e) {
+    uni.showToast({ title: e.message || '保存失败', icon: 'none' })
+  }
 }
 
 function goPage(name) {

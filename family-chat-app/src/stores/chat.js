@@ -91,6 +91,16 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  /** 更新消息 */
+  function updateMessage(groupId, messageId, patch) {
+    const list = messagesMap[groupId]
+    if (!list) return
+    const msg = list.find(m => m.id === messageId)
+    if (!msg) return
+    Object.assign(msg, patch)
+    setCachedMessages(groupId, list)
+  }
+
   /** 撤回消息 */
   function handleRecall(messageId) {
     for (const gid in messagesMap) {
@@ -186,6 +196,7 @@ export const useChatStore = defineStore('chat', () => {
     loadMessages,
     sendMessage,
     addMessage,
+    updateMessage,
     handleRecall,
     handleReaction,
     incrementUnread,

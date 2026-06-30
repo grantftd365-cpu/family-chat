@@ -13,7 +13,7 @@
           @confirm="doSearch"
           @input="onInput"
         />
-        <view v-if="keyword" class="clear-btn" @tap="keyword = ''">
+        <view v-if="keyword" class="clear-btn" @tap="clearKeyword">
           <text>✕</text>
         </view>
       </view>
@@ -34,7 +34,8 @@
           @tap="goContact(item)"
         >
           <view class="item-avatar">
-            <text>{{ (item.nickname || '?')[0] }}</text>
+            <image v-if="item.avatar_url" :src="api.toAbsoluteMediaUrl(item.avatar_url)" class="avatar-img" mode="aspectFill" />
+            <text v-else>{{ item.avatar || (item.nickname || '?')[0] }}</text>
           </view>
           <view class="item-info">
             <text class="item-name">{{ item.nickname }}</text>
@@ -110,10 +111,20 @@ const hasResults = computed(() => {
   return (r.contacts?.length || 0) + (r.groups?.length || 0) + (r.messages?.length || 0) > 0
 })
 
-onLoad(() => {
+onLoad((options = {}) => {
   const sysInfo = uni.getSystemInfoSync()
   statusBarHeight.value = sysInfo.statusBarHeight || 44
+  if (options.q) {
+    keyword.value = decodeURIComponent(options.q)
+    doSearch()
+  }
 })
+
+function clearKeyword() {
+  keyword.value = ''
+  results.value = { contacts: [], groups: [], messages: [] }
+  searched.value = false
+}
 
 function onInput() {
   clearTimeout(searchTimer)
@@ -138,7 +149,45 @@ async function doSearch() {
 }
 
 function goContact(item) {
-  uni.showToast({ title: '查看联系人', icon: 'none' })
+  uni.showActionSheet({
+    itemList: ['发消息', '添加好友'],
+    success: async (res) => {
+      if (res.tapIndex === 0) {
+        await openDirectChat(item)
+      } else if (res.tapIndex === 1) {
+        await addFriend(item)
+      }
+    }
+  })
+}
+
+async function openDirectChat(item) {
+  uni.showLoading({ title: '正在打开聊天...' })
+  try {
+    const group = await api.getOrCreateDirectGroup(item.id)
+    uni.hideLoading()
+    uni.navigateTo({
+      url: `/pages/chat/chat?groupId=${group.id}&name=${encodeURIComponent(item.nickname || '私聊')}`
+    })
+  } catch (e) {
+    uni.hideLoading()
+    uni.showModal({
+      title: '还不是好友',
+      content: '需要先添加好友，是否现在发送好友申请？',
+      success: async (r) => {
+        if (r.confirm) await addFriend(item)
+      }
+    })
+  }
+}
+
+async function addFriend(item) {
+  try {
+    await api.sendFriendRequest(item.id, '你好，我想添加你为好友')
+    uni.showToast({ title: '好友申请已发送', icon: 'success' })
+  } catch (e) {
+    uni.showToast({ title: e.message || '发送失败', icon: 'none' })
+  }
 }
 
 function goGroup(item) {
@@ -253,6 +302,13 @@ function goBack() {
 
 .msg-avatar {
   background: #F5A623;
+}
+
+
+.avatar-img {
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: $radius-base;
 }
 
 .item-info {

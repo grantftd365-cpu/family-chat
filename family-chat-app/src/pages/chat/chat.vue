@@ -257,6 +257,13 @@
 
     <!-- 底部输入栏 -->
     <view class="input-bar safe-area-bottom">
+      <view v-if="replyToMsg" class="reply-draft">
+        <view class="reply-draft-text">
+          <text>回复 {{ replyToMsg.sender_name }}：</text>
+          <text>{{ replyToMsg.content || '[媒体消息]' }}</text>
+        </view>
+        <text class="reply-draft-close" @tap="clearReply">✕</text>
+      </view>
       <view class="input-bar-inner">
         <!-- 语音按钮 -->
         <view class="bar-btn" @tap="toggleVoiceMode">
@@ -447,6 +454,7 @@ const showGroupInfo = ref(false)
 const showMentionPanel = ref(false)
 const showMsgMenu = ref(false)
 const selectedMsg = ref(null)
+const replyToMsg = ref(null)
 const menuStyle = ref({})
 const scrollTarget = ref('')
 const refreshing = ref(false)
@@ -477,6 +485,7 @@ const quickEmojis = ['👍', '❤️', '😂', '😮', '😢', '🎉']
 let typingTimer = null
 let recorderManager = null
 let searchDebounce = null
+let currentAudioCtx = null
 
 const currentUserId = computed(() => userStore.userInfo?.id)
 const messages = computed(() => chatStore.messagesMap[groupId.value] || [])
@@ -538,6 +547,10 @@ onLoad((options) => {
   // 断线重连后重新同步消息
   ws.on('connected', onWsReconnected)
 
+  if (options.showInfo === '1') {
+    nextTick(() => { showGroupInfo.value = true })
+  }
+
   // 初始化录音
   initRecorder()
 })
@@ -561,6 +574,7 @@ onUnload(() => {
 })
 
 function initRecorder() {
+  if (!uni.getRecorderManager) return
   recorderManager = uni.getRecorderManager()
   recorderManager.onStop((res) => {
     if (isRecording.value) {
@@ -715,8 +729,10 @@ async function sendTextMessage() {
     await chatStore.sendMessage({
       group_id: groupId.value,
       content: text,
-      msg_type: 'text'
+      msg_type: 'text',
+      reply_to: replyToMsg.value?.id || ''
     })
+    replyToMsg.value = null
     scrollToBottom()
   } catch (e) {
     // 恢复输入内容
@@ -809,6 +825,10 @@ function toggleVoiceMode() {
 
 // 录音
 function startRecording() {
+  if (!recorderManager) {
+    uni.showToast({ title: '当前设备不支持录音', icon: 'none' })
+    return
+  }
   isRecording.value = true
   recorderManager.start({
     format: 'mp3',
@@ -818,6 +838,7 @@ function startRecording() {
 }
 
 function stopRecording() {
+  if (!recorderManager || !isRecording.value) return
   uni.hideToast()
   recorderManager.stop()
 }
@@ -825,7 +846,7 @@ function stopRecording() {
 function cancelRecording() {
   uni.hideToast()
   isRecording.value = false
-  recorderManager.stop()
+  if (recorderManager) recorderManager.stop()
 }
 
 // 上传并发送语音
@@ -835,7 +856,7 @@ async function uploadAndSendVoice(filePath) {
     const res = await api.uploadVoice(filePath)
     await chatStore.sendMessage({
       group_id: groupId.value,
-      content: res.url || '',
+      content: '语音消息',
       msg_type: 'voice',
       media_url: res.url
     })
@@ -858,10 +879,10 @@ function chooseImage() {
       for (const path of res.tempFilePaths) {
         try {
           uni.showLoading({ title: '上传中...' })
-          const uploadRes = await api.uploadMomentImage(path)
+          const uploadRes = await api.uploadChatImage(path)
           await chatStore.sendMessage({
             group_id: groupId.value,
-            content: uploadRes.url || path,
+            content: '图片消息',
             msg_type: 'image',
             media_url: uploadRes.url || path
           })
@@ -887,7 +908,7 @@ function chooseFile() {
     if (!file) return
     uni.showLoading({ title: '上传中...' })
     try {
-      const uploadRes = await api.uploadVoice(file.path || file.name)
+      const uploadRes = await api.uploadChatFile(file)
       await chatStore.sendMessage({
         group_id: groupId.value,
         content: file.name || '文件',
@@ -913,7 +934,7 @@ function chooseFile() {
       const file = res.tempFiles[0]
       uni.showLoading({ title: '上传中...' })
       try {
-        const uploadRes = await api.uploadVoice(file.path || file.url)
+        const uploadRes = await api.uploadChatFile(file.path || file.url)
         await chatStore.sendMessage({
           group_id: groupId.value,
           content: file.name || '文件',
@@ -954,12 +975,13 @@ function sendRedEnvelope() {
           success: async (res2) => {
             const greeting = res2.content || '恭喜发财'
             try {
-              await api.sendMessage({
+              const result = await api.createRedEnvelope({
                 group_id: groupId.value,
-                content: greeting,
-                msg_type: 'red_envelope',
-                extra: JSON.stringify({ amount, greeting })
+                amount,
+                count: 1,
+                greeting
               })
+              if (result?.message) chatStore.addMessage(groupId.value, result.message)
               uni.showToast({ title: '红包已发出', icon: 'success' })
               scrollToBottom()
             } catch (e) {
@@ -988,57 +1010,100 @@ function chooseLocation() {
         console.error('位置发送失败:', e)
       }
     },
-    fail: () => {}
+    fail: (err) => {
+      if (!err?.errMsg?.includes('cancel')) {
+        uni.showToast({ title: '无法获取位置', icon: 'none' })
+      }
+    }
   })
 }
 
 // 播放语音
 function playVoice(msg) {
   if (playingVoiceId.value === msg.id) {
-    uni.stopBackgroundAudio()
+    if (currentAudioCtx) {
+      currentAudioCtx.stop()
+      currentAudioCtx.destroy()
+      currentAudioCtx = null
+    }
     playingVoiceId.value = null
     return
   }
-  const url = msg.media_url || msg.content
+  if (currentAudioCtx) {
+    currentAudioCtx.stop()
+    currentAudioCtx.destroy()
+    currentAudioCtx = null
+  }
+  const url = api.toAbsoluteMediaUrl(msg.media_url || msg.content)
+  if (!url) return uni.showToast({ title: '语音地址无效', icon: 'none' })
   playingVoiceId.value = msg.id
   const audioCtx = uni.createInnerAudioContext()
+  currentAudioCtx = audioCtx
   audioCtx.src = url
   audioCtx.play()
   audioCtx.onEnded(() => {
     playingVoiceId.value = null
+    currentAudioCtx = null
     audioCtx.destroy()
   })
   audioCtx.onError(() => {
     playingVoiceId.value = null
+    currentAudioCtx = null
     audioCtx.destroy()
+    uni.showToast({ title: '语音播放失败', icon: 'none' })
   })
 }
 
 // 预览图片
 function previewImage(msg) {
-  const url = msg.media_url || msg.content
+  const url = api.toAbsoluteMediaUrl(msg.media_url || msg.content)
+  const urls = messages.value
+    .filter(item => item.msg_type === 'image')
+    .map(item => api.toAbsoluteMediaUrl(item.media_url || item.content))
+    .filter(Boolean)
   uni.previewImage({
     current: url,
-    urls: [url]
+    urls: urls.length ? urls : [url]
   })
 }
 
 // 打开红包
 async function openRedEnvelope(msg) {
+  let extra = {}
+  try { extra = JSON.parse(msg.extra || '{}') } catch (e) {}
+  const envelopeId = extra.envelope_id || extra.id
+  if (!envelopeId) return uni.showToast({ title: '红包信息缺失', icon: 'none' })
   try {
-    // 解析红包信息
-    let extra = {}
-    try { extra = JSON.parse(msg.extra || '{}') } catch (e) {}
-    const amount = extra.amount || '未知'
-    const greeting = extra.greeting || '恭喜发财'
+    const detail = await api.getRedEnvelope(envelopeId)
+    const greeting = detail.greeting || extra.greeting || '恭喜发财'
+    if (detail.my_claim) {
+      uni.showModal({ title: '🧧 ' + greeting, content: `已领取 ${detail.my_claim.amount} 元`, showCancel: false })
+      return
+    }
+    if (detail.sender_id === currentUserId.value) {
+      uni.showModal({
+        title: '🧧 ' + greeting,
+        content: `总额 ${detail.amount} 元，剩余 ${detail.remaining} 元 / ${detail.count} 个`,
+        showCancel: false
+      })
+      return
+    }
     uni.showModal({
       title: '🧧 ' + greeting,
-      content: `金额: ${amount}元`,
-      showCancel: false,
-      confirmText: '好的'
+      content: '打开红包？',
+      confirmText: '开',
+      success: async (res) => {
+        if (!res.confirm) return
+        try {
+          const claim = await api.claimRedEnvelope(envelopeId)
+          uni.showModal({ title: '领取成功', content: `抢到 ${claim.amount} 元`, showCancel: false })
+        } catch (e) {
+          uni.showToast({ title: e.message || '红包已领取', icon: 'none' })
+        }
+      }
     })
   } catch (e) {
-    uni.showToast({ title: '红包已领取', icon: 'success' })
+    uni.showToast({ title: e.message || '红包不可用', icon: 'none' })
   }
 }
 
@@ -1218,12 +1283,13 @@ function handleCopy() {
 async function handleForward() {
   if (!selectedMsg.value) return
   showMsgMenu.value = false
-  // 简化：选择目标群
-  const groupNames = chatStore.groups.map(g => g.name)
+  const targetGroups = chatStore.groups.filter(g => g.id !== groupId.value)
+  if (!targetGroups.length) return uni.showToast({ title: '暂无可转发的群聊', icon: 'none' })
+  const groupNames = targetGroups.map(g => g.name || '聊天')
   uni.showActionSheet({
     itemList: groupNames,
     success: async (res) => {
-      const targetGroup = chatStore.groups[res.tapIndex]
+      const targetGroup = targetGroups[res.tapIndex]
       try {
         await chatStore.forwardMsg(selectedMsg.value.id, targetGroup.id)
         uni.showToast({ title: '已转发', icon: 'success' })
@@ -1239,9 +1305,11 @@ async function handleFavorite() {
   showMsgMenu.value = false
   try {
     await api.addFavorite({
-      content: selectedMsg.value.content,
+      message_id: selectedMsg.value.id,
+      content: selectedMsg.value.content || selectedMsg.value.file_name || '[媒体消息]',
       msg_type: selectedMsg.value.msg_type,
-      source: 'chat'
+      media_url: selectedMsg.value.media_url || '',
+      source_name: chatName.value || 'chat'
     })
     uni.showToast({ title: '已收藏', icon: 'success' })
   } catch (e) {
@@ -1252,7 +1320,12 @@ async function handleFavorite() {
 function handleReply() {
   if (!selectedMsg.value) return
   showMsgMenu.value = false
+  replyToMsg.value = selectedMsg.value
   inputText.value = `@${selectedMsg.value.sender_name} `
+}
+
+function clearReply() {
+  replyToMsg.value = null
 }
 
 async function handleReaction() {
@@ -1953,6 +2026,31 @@ function reEditMessage(msg) {
   box-shadow: 0 18rpx 46rpx rgba(16, 24, 40, 0.12);
   overflow: hidden;
   backdrop-filter: blur(18rpx);
+}
+
+
+.reply-draft {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 20rpx 12rpx;
+  padding: 14rpx 20rpx;
+  border-left: 6rpx solid $primary-color;
+  border-radius: $radius-base;
+  background: rgba(7, 193, 96, 0.08);
+}
+.reply-draft-text {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: $font-sm;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.reply-draft-close {
+  padding: 8rpx 12rpx;
+  color: var(--text-secondary);
 }
 
 .input-bar-inner {

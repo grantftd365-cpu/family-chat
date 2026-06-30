@@ -180,22 +180,19 @@ function goSearch() {
 
 function onLongPress(group) {
   uni.showActionSheet({
-    itemList: ['置顶聊天', '删除聊天', '群信息'],
-    success: (res) => {
+    itemList: ['清除未读', '进入聊天', '群信息'],
+    success: async (res) => {
       if (res.tapIndex === 0) {
-        uni.showToast({ title: '已置顶', icon: 'success' })
+        chatStore.clearUnread(group.id)
+        try { await chatStore.loadGroups() } catch (e) {}
+        uni.showToast({ title: '已标为已读', icon: 'success' })
       } else if (res.tapIndex === 1) {
-        uni.showModal({
-          title: '提示',
-          content: '确定删除该聊天？',
-          success: (r) => {
-            if (r.confirm) {
-              uni.showToast({ title: '已删除', icon: 'success' })
-            }
-          }
-        })
+        goChat(group)
       } else if (res.tapIndex === 2) {
-        uni.showToast({ title: '群信息功能开发中', icon: 'none' })
+        chatStore.currentGroupId = group.id
+        uni.navigateTo({
+          url: `/pages/chat/chat?groupId=${group.id}&name=${encodeURIComponent(group.name || '聊天')}&showInfo=1`
+        })
       }
     }
   })

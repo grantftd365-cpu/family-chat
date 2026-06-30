@@ -70,13 +70,13 @@
           >
             <view class="friend-avatar">
               <image
-                v-if="friend.avatar"
-                :src="friend.avatar"
+                v-if="friend.avatar_url"
+                :src="api.toAbsoluteMediaUrl(friend.avatar_url)"
                 class="avatar-img"
                 mode="aspectFill"
               />
               <view v-else class="avatar-placeholder">
-                <text>{{ (friend.nickname || friend.username || '?')[0] }}</text>
+                <text>{{ friend.avatar || (friend.nickname || friend.username || '?')[0] }}</text>
               </view>
             </view>
             <view class="friend-info">
@@ -109,6 +109,32 @@
         </view>
       </view>
     </view>
+
+    <!-- 好友请求弹窗 -->
+    <view v-if="showRequests" class="modal-mask" @tap="showRequests = false">
+      <view class="modal-content request-modal" @tap.stop>
+        <text class="modal-title">新的朋友</text>
+        <scroll-view scroll-y class="request-list">
+          <view v-if="friendRequests.length === 0" class="request-empty">
+            <text>暂无新的好友请求</text>
+          </view>
+          <view v-for="req in friendRequests" :key="req.id" class="request-item">
+            <view class="friend-avatar">
+              <image v-if="req.avatar_url" :src="api.toAbsoluteMediaUrl(req.avatar_url)" class="avatar-img" mode="aspectFill" />
+              <view v-else class="avatar-placeholder"><text>{{ req.avatar || (req.nickname || '?')[0] }}</text></view>
+            </view>
+            <view class="request-info">
+              <text class="friend-name">{{ req.nickname || '新朋友' }}</text>
+              <text class="friend-sign">{{ req.message || '请求添加你为好友' }}</text>
+            </view>
+            <view class="request-actions">
+              <view class="request-btn reject" @tap="handleFriendRequest(req, 'reject')"><text>拒绝</text></view>
+              <view class="request-btn accept" @tap="handleFriendRequest(req, 'accept')"><text>接受</text></view>
+            </view>
+          </view>
+        </scroll-view>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -130,6 +156,7 @@ const loading = ref(false)
 const friends = ref([])
 const friendRequests = ref([])
 const showAddFriend = ref(false)
+const showRequests = ref(false)
 const searchKeyword = ref('')
 
 // 按首字母分组
@@ -189,8 +216,9 @@ function goSearch() {
   uni.navigateTo({ url: '/pages/search/search' })
 }
 
-function goFriendRequests() {
-  uni.showToast({ title: '好友请求功能开发中', icon: 'none' })
+async function goFriendRequests() {
+  showRequests.value = true
+  await loadData()
 }
 
 function goGroups() {
@@ -201,9 +229,18 @@ function goAgents() {
   uni.navigateTo({ url: '/pages/agents/manage' })
 }
 
-function goChat(friend) {
-  // 创建或查找与好友的聊天
-  uni.showToast({ title: '正在打开聊天...', icon: 'none' })
+async function goChat(friend) {
+  uni.showLoading({ title: '正在打开聊天...' })
+  try {
+    const group = await api.getOrCreateDirectGroup(friend.id)
+    uni.hideLoading()
+    uni.navigateTo({
+      url: `/pages/chat/chat?groupId=${group.id}&name=${encodeURIComponent(friend.remark || friend.nickname || '私聊')}`
+    })
+  } catch (e) {
+    uni.hideLoading()
+    uni.showToast({ title: e.message || '打开聊天失败', icon: 'none' })
+  }
 }
 
 function handleSearchFriend() {
@@ -215,6 +252,16 @@ function handleSearchFriend() {
   uni.navigateTo({
     url: `/pages/search/search?q=${encodeURIComponent(searchKeyword.value)}`
   })
+}
+
+async function handleFriendRequest(req, action) {
+  try {
+    await api.handleFriendRequest({ request_id: req.id, action })
+    uni.showToast({ title: action === 'accept' ? '已添加好友' : '已拒绝', icon: 'success' })
+    await loadData()
+  } catch (e) {
+    uni.showToast({ title: e.message || '处理失败', icon: 'none' })
+  }
 }
 
 // 获取拼音首字母（简化版）
@@ -488,5 +535,49 @@ function getPinyinInitial(char) {
     background: $primary-color;
     color: #ffffff;
   }
+}
+
+.request-modal {
+  width: 680rpx;
+}
+.request-list {
+  max-height: 640rpx;
+}
+.request-empty {
+  padding: 56rpx 0;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: $font-base;
+}
+.request-item {
+  display: flex;
+  align-items: center;
+  padding: 22rpx 0;
+  border-bottom: 1rpx solid var(--border-color);
+}
+.request-info {
+  flex: 1;
+  min-width: 0;
+}
+.request-actions {
+  display: flex;
+  gap: 12rpx;
+}
+.request-btn {
+  min-width: 84rpx;
+  height: 56rpx;
+  border-radius: 28rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: $font-sm;
+}
+.request-btn.reject {
+  background: var(--bg-color);
+  color: var(--text-secondary);
+}
+.request-btn.accept {
+  background: $primary-color;
+  color: #fff;
 }
 </style>

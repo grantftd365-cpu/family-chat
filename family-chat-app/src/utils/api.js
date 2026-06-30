@@ -59,7 +59,8 @@ function request(options, retryCount = 0) {
           }, 1500)
           reject(new Error('未授权'))
         } else if (res.statusCode === 403) {
-          reject(new Error('没有权限'))
+          const msg = res.data?.detail || res.data?.message || '没有权限'
+          reject(new Error(msg))
         } else if (res.statusCode === 404) {
           reject(new Error('资源不存在'))
         } else if (res.statusCode === 429) {
@@ -113,7 +114,7 @@ function getResponseErrorMessage(res, fallback = '请求失败') {
   return data?.detail || data?.message || data?.error || `${fallback}(${res.statusCode})`
 }
 
-function toAbsoluteMediaUrl(url) {
+export function toAbsoluteMediaUrl(url) {
   if (!url) return ''
   if (/^(https?:|file:|data:|blob:)/i.test(url)) return url
   const base = getServerUrl()
@@ -180,6 +181,41 @@ export function updateMe(data) {
   return put('/api/me', data)
 }
 
+
+function uploadFileToEndpoint(endpoint, fileOrPath, fallbackName = 'file') {
+  return new Promise((resolve, reject) => {
+    const token = getToken()
+    // #ifdef H5
+    if (typeof File !== 'undefined' && fileOrPath instanceof File) {
+      const form = new FormData()
+      form.append('file', fileOrPath, fileOrPath.name || fallbackName)
+      const xhr = new XMLHttpRequest()
+      xhr.open('POST', getServerUrl() + endpoint)
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+      xhr.onload = () => {
+        const data = parseResponseData(xhr.responseText)
+        if (xhr.status === 200 || xhr.status === 201) resolve(data)
+        else reject(new Error(data?.detail || data?.message || '上传失败'))
+      }
+      xhr.onerror = () => reject(new Error('上传失败'))
+      xhr.send(form)
+      return
+    }
+    // #endif
+    uni.uploadFile({
+      url: getServerUrl() + endpoint,
+      filePath: fileOrPath,
+      name: 'file',
+      header: token ? { Authorization: `Bearer ${token}` } : {},
+      success: (res) => {
+        if (res.statusCode === 200 || res.statusCode === 201) resolve(parseResponseData(res.data))
+        else reject(new Error(getResponseErrorMessage(res, '上传失败')))
+      },
+      fail: (err) => reject(new Error(err.errMsg || '上传失败'))
+    })
+  })
+}
+
 /** 上传头像 */
 export function uploadAvatar(filePath) {
   return new Promise((resolve, reject) => {
@@ -211,6 +247,10 @@ export function getGroups() {
 /** 创建群 */
 export function createGroup(data) {
   return post('/api/groups', data)
+}
+
+export function getOrCreateDirectGroup(friendId) {
+  return post(`/api/groups/direct/${friendId}`)
 }
 
 /** 获取群成员 */
@@ -379,6 +419,10 @@ export function getFriendRequests() {
   return get('/api/friends/requests')
 }
 
+export function sendFriendRequest(toUserId, message = '') {
+  return post('/api/friends/request', { to_user_id: toUserId, message })
+}
+
 /** 处理好友请求 */
 export function handleFriendRequest(data) {
   return post('/api/friends/requests/handle', data)
@@ -408,23 +452,15 @@ export function commentMoment(momentId, content) {
 
 /** 上传朋友圈图片 */
 export function uploadMomentImage(filePath) {
-  return new Promise((resolve, reject) => {
-    const token = getToken()
-    uni.uploadFile({
-      url: getServerUrl() + '/api/moments/upload',
-      filePath,
-      name: 'file',
-      header: token ? { Authorization: `Bearer ${token}` } : {},
-      success: (res) => {
-        if (res.statusCode === 200) {
-          resolve(JSON.parse(res.data))
-        } else {
-          reject(new Error('上传失败'))
-        }
-      },
-      fail: (err) => reject(new Error(err.errMsg || '上传失败'))
-    })
-  })
+  return uploadFileToEndpoint('/api/moments/upload', filePath)
+}
+
+export function uploadChatImage(filePath) {
+  return uploadFileToEndpoint('/api/upload/image', filePath)
+}
+
+export function uploadChatFile(fileOrPath) {
+  return uploadFileToEndpoint('/api/upload/file', fileOrPath)
 }
 
 /* ========== 收藏相关 ========== */
@@ -466,6 +502,18 @@ export function textToSpeech(text) {
 }
 
 /** 上传语音 */
+export function createRedEnvelope(data) {
+  return post('/api/red-envelopes', data)
+}
+
+export function claimRedEnvelope(envelopeId) {
+  return post(`/api/red-envelopes/${envelopeId}/claim`)
+}
+
+export function getRedEnvelope(envelopeId) {
+  return get(`/api/red-envelopes/${envelopeId}`)
+}
+
 export function uploadVoice(filePath) {
   return new Promise((resolve, reject) => {
     const token = getToken()
@@ -695,8 +743,10 @@ export default {
   wxLogin,
   getMe,
   updateMe,
+  toAbsoluteMediaUrl,
   uploadAvatar,
   getGroups,
+  getOrCreateDirectGroup,
   createGroup,
   getGroupMembers,
   getMessages,
@@ -727,6 +777,7 @@ export default {
   deleteAgent,
   refineText,
   getFriends,
+  sendFriendRequest,
   getFriendRequests,
   handleFriendRequest,
   getMoments,
@@ -734,6 +785,8 @@ export default {
   likeMoment,
   commentMoment,
   uploadMomentImage,
+  uploadChatFile,
+  uploadChatImage,
   getFavorites,
   addFavorite,
   search,
@@ -741,6 +794,9 @@ export default {
   updateLLMConfig,
   textToSpeech,
   uploadVoice,
+  getRedEnvelope,
+  claimRedEnvelope,
+  createRedEnvelope,
   getVoiceProfiles,
   getAvailableVoices,
   getVoiceDiagnostics,

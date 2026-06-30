@@ -37,6 +37,10 @@ export default {
         chatStore.addMessage(msg.group_id, msg)
         chatStore.incrementUnread(msg.group_id)
       })
+      ws.on('message_update', (payload) => {
+        const data = payload.data || payload
+        chatStore.updateMessage(data.group_id, data.id, data)
+      })
       ws.on('recall', (data) => {
         chatStore.handleRecall(data.message_id)
       })

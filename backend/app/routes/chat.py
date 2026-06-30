@@ -1,5 +1,6 @@
 """聊天路由 - 消息/群组/私聊"""
 import asyncio
+import hashlib
 import os
 import random
 import json
@@ -85,6 +86,14 @@ class ClaimRedEnvelopeReq(BaseModel):
     envelope_id: str
 
 
+class FavoriteReq(BaseModel):
+    message_id: str = ""
+    content: str = ""
+    msg_type: str = "text"
+    media_url: str = ""
+    source_name: str = ""
+
+
 # ==================== 群组 ====================
 
 @router.get("/groups")
@@ -156,6 +165,52 @@ async def create_group(req: CreateGroupReq, user=Depends(get_current_user)):
                 )
         await db.commit()
         return {"id": group_id, "name": req.name}
+    finally:
+        await db.close()
+
+
+@router.post("/groups/direct/{friend_id}")
+async def get_or_create_direct_group(friend_id: str, user=Depends(get_current_user)):
+    """获取或创建一对一聊天。"""
+    if friend_id == user["user_id"]:
+        raise HTTPException(400, "不能和自己发起私聊")
+    db = await get_db()
+    try:
+        async with db.execute(
+            "SELECT 1 FROM friendships WHERE user_id=? AND friend_id=? AND status='accepted'",
+            (user["user_id"], friend_id)
+        ) as c:
+            if not await c.fetchone():
+                raise HTTPException(403, "请先成为好友再聊天")
+
+        async with db.execute("SELECT nickname,avatar,avatar_url FROM users WHERE id=?", (user["user_id"],)) as c:
+            me = await c.fetchone()
+        async with db.execute("SELECT nickname,avatar,avatar_url FROM users WHERE id=?", (friend_id,)) as c:
+            friend = await c.fetchone()
+        if not friend:
+            raise HTTPException(404, "好友不存在")
+
+        pair = sorted([user["user_id"], friend_id])
+        group_id = "direct_" + hashlib.sha1(":".join(pair).encode("utf-8")).hexdigest()[:24]
+        ts = now()
+        group_name = f"{me[0] if me else user['username']} 和 {friend[0]}"
+        avatar = friend[2] or friend[1] or "👤"
+        await db.execute(
+            """INSERT OR IGNORE INTO groups
+               (id,name,avatar,owner_id,description,group_type,created_at,updated_at)
+               VALUES (?,?,?,?,?,?,?,?)""",
+            (group_id, group_name, avatar, user["user_id"], "一对一聊天", "direct", ts, ts)
+        )
+        await db.execute(
+            "INSERT OR IGNORE INTO group_members (group_id,user_id,role,joined_at) VALUES (?,?,?,?)",
+            (group_id, user["user_id"], "member", ts)
+        )
+        await db.execute(
+            "INSERT OR IGNORE INTO group_members (group_id,user_id,role,joined_at) VALUES (?,?,?,?)",
+            (group_id, friend_id, "member", ts)
+        )
+        await db.commit()
+        return {"id": group_id, "name": friend[0] or "私聊", "avatar": avatar}
     finally:
         await db.close()
 
@@ -434,9 +489,15 @@ async def send_message(req: SendMessageReq, user=Depends(get_current_user)):
         asyncio.create_task(MessageDelivery.on_message_sent(msg_id, req.group_id, user["user_id"]))
 
         # 触发 Agent 回复（支持语音）
-        asyncio.create_task(
-            _handle_agent_replies(req.group_id, user["user_id"], nickname, req.content, req.msg_type)
-        )
+        if req.msg_type in ("image", "voice"):
+            asyncio.create_task(_handle_media_message_for_agents(
+                msg_id, req.group_id, user["user_id"], nickname,
+                req.content, req.msg_type, req.media_url or req.voice_url, req.extra,
+            ))
+        else:
+            asyncio.create_task(
+                _handle_agent_replies(req.group_id, user["user_id"], nickname, req.content, req.msg_type)
+            )
 
         return {
             "id": msg_id,
@@ -445,6 +506,50 @@ async def send_message(req: SendMessageReq, user=Depends(get_current_user)):
         }
     finally:
         await db.close()
+
+
+async def _handle_media_message_for_agents(msg_id: str, group_id: str, sender_id: str,
+                                           sender_name: str, content: str, msg_type: str,
+                                           media_url: str, extra: str = "{}"):
+    """Analyze media in background, then drive agent memory/replies."""
+    agent_content = content or ""
+    extra_payload = {}
+    try:
+        extra_payload = json.loads(extra) if extra else {}
+        if not isinstance(extra_payload, dict):
+            extra_payload = {}
+    except Exception:
+        extra_payload = {}
+
+    try:
+        from ..main import multimodal_analyzer
+        if multimodal_analyzer:
+            analysis = await asyncio.wait_for(
+                multimodal_analyzer.analyze_message(msg_type, media_url, content, sender_name),
+                timeout=45,
+            )
+            analysis_text = (analysis or {}).get("text") or ""
+            if analysis_text:
+                agent_content = analysis_text
+                extra_payload["analysis"] = analysis
+                extra_json = json.dumps(extra_payload, ensure_ascii=False)
+                db = await get_db()
+                try:
+                    await db.execute(
+                        "UPDATE messages SET content=?, extra=? WHERE id=?",
+                        (agent_content, extra_json, msg_id)
+                    )
+                    await db.commit()
+                finally:
+                    await db.close()
+                await ws_manager.broadcast_to_group(group_id, {
+                    "type": "message_update",
+                    "data": {"id": msg_id, "group_id": group_id, "content": agent_content, "extra": extra_json}
+                })
+    except Exception as exc:
+        logger.warning("multimodal analysis skipped: " + str(exc))
+
+    await _handle_agent_replies(group_id, sender_id, sender_name, agent_content, msg_type)
 
 
 async def _handle_agent_replies(group_id: str, sender_id: str, sender_name: str,
@@ -847,14 +952,13 @@ async def pat_user(group_id: str, req: PatReq, user=Depends(get_current_user)):
 # ==================== 收藏 ====================
 
 @router.post("/favorites")
-async def add_favorite(message_id: str = "", content: str = "", msg_type: str = "text",
-                       media_url: str = "", source_name: str = "", user=Depends(get_current_user)):
+async def add_favorite(req: FavoriteReq, user=Depends(get_current_user)):
     db = await get_db()
     try:
         fid = gen_id()
         await db.execute(
             "INSERT INTO favorites (id,user_id,message_id,content,msg_type,media_url,source_name,created_at) VALUES (?,?,?,?,?,?,?,?)",
-            (fid, user["user_id"], message_id, content, msg_type, media_url, source_name, now())
+            (fid, user["user_id"], req.message_id, req.content, req.msg_type, req.media_url, req.source_name, now())
         )
         await db.commit()
         return {"id": fid}
@@ -981,24 +1085,39 @@ async def create_red_envelope(req: RedEnvelopeReq, user=Depends(get_current_user
         )
         await db.commit()
 
-        # 广播红包消息
+        # Broadcast as a standard message event so clients render it immediately.
+        message_data = None
         if req.group_id:
-            async with db.execute("SELECT nickname FROM users WHERE id=?", (user["user_id"],)) as c:
+            async with db.execute("SELECT nickname,avatar,avatar_url FROM users WHERE id=?", (user["user_id"],)) as c:
                 r = await c.fetchone()
                 name = r[0] if r else "someone"
+                avatar = (r[2] or r[1]) if r else "😀"
             msg_id = gen_id()
             ts = now()
+            extra = json.dumps({
+                "envelope_id": eid,
+                "amount": req.amount,
+                "count": req.count,
+                "greeting": req.greeting,
+            }, ensure_ascii=False)
             await db.execute(
-                "INSERT INTO messages (id,group_id,sender_id,sender_name,content,msg_type,created_at) VALUES (?,?,?,?,?,?,?)",
-                (msg_id, req.group_id, user["user_id"], name, req.greeting, "red_envelope", ts)
+                """INSERT INTO messages (id,group_id,sender_id,sender_name,sender_avatar,content,msg_type,extra,created_at)
+                   VALUES (?,?,?,?,?,?,?,?,?)""",
+                (msg_id, req.group_id, user["user_id"], name, avatar, req.greeting, "red_envelope", extra, ts)
             )
             await db.commit()
-            await ws_manager.broadcast_to_group(req.group_id, {
-                "type": "red_envelope",
-                "data": {"id": eid, "sender": name, "greeting": req.greeting, "group_id": req.group_id}
-            })
+            message_data = {
+                "id": msg_id, "group_id": req.group_id,
+                "sender_id": user["user_id"], "sender_name": name,
+                "sender_avatar": avatar, "content": req.greeting,
+                "msg_type": "red_envelope", "media_url": "",
+                "file_name": "", "file_size": 0,
+                "is_agent": False, "reply_to": "", "reply_content": "",
+                "extra": extra, "created_at": ts, "reactions": [],
+            }
+            await ws_manager.broadcast_to_group(req.group_id, {"type": "message", "data": message_data})
 
-        return {"id": eid}
+        return {"id": eid, "message": message_data}
     finally:
         await db.close()
 

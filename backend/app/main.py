@@ -23,12 +23,14 @@ from .core.websocket import ws_manager
 from .agents.core import AgentManager
 from .services.voice_profiles import VoiceProfileManager
 from .services.refinement import MultiModalRefinement
+from .services.multimodal import ChatMultimodalAnalyzer
 
 # ==================== Lifespan ====================
 
 agent_manager: AgentManager = None
 voice_profile_manager: VoiceProfileManager = None
 refinement_service: MultiModalRefinement = None
+multimodal_analyzer: ChatMultimodalAnalyzer = None
 
 
 async def _proactive_scheduler():
@@ -143,7 +145,7 @@ async def lifespan(app: FastAPI):
     # Don't close db — agent_manager holds the reference
 
     # 初始化语音音色管理器
-    global voice_profile_manager, refinement_service
+    global voice_profile_manager, refinement_service, multimodal_analyzer
     voice_profile_manager = VoiceProfileManager(db)
     await voice_profile_manager.init_db()
     logger.info("✅ 语音音色管理器就绪")
@@ -152,6 +154,9 @@ async def lifespan(app: FastAPI):
     refinement_service = MultiModalRefinement(db, llm_config)
     await refinement_service.init_essence_db()
     logger.info("✅ 多维炼化引擎就绪（七层本质模型）")
+
+    multimodal_analyzer = ChatMultimodalAnalyzer(llm_config)
+    logger.info("✅ 聊天多模态识别服务就绪")
 
     logger.info("=" * 50)
     logger.info("🏠 FamilyChat v2.0 已启动！")
@@ -325,6 +330,8 @@ async def update_llm_config(req: LLMConfigReq, user=Depends(get_current_user)):
     agent_manager.llm_config.update(new_config)
     if refinement_service:
         refinement_service.llm_config.update(new_config)
+    if multimodal_analyzer:
+        multimodal_analyzer.llm_config.update(new_config)
     for agent in agent_manager.agents.values():
         agent.llm_config = agent_manager.llm_config
     return {"status": "ok"}
