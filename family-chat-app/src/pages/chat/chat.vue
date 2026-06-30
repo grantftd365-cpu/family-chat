@@ -263,6 +263,11 @@
           <text>{{ voiceMode ? '⌨️' : '🎤' }}</text>
         </view>
 
+        <!-- @成员按钮 -->
+        <view class="bar-btn mention-btn" @tap="toggleMentionPanel">
+          <text>@</text>
+        </view>
+
         <!-- 文字输入 / 语音录入 -->
         <view v-if="!voiceMode" class="input-wrap">
           <textarea
@@ -290,12 +295,12 @@
         </view>
 
         <!-- 表情按钮 -->
-        <view class="bar-btn" @tap="showEmoji = !showEmoji">
+        <view class="bar-btn" @tap="toggleEmojiPanel">
           <text>😊</text>
         </view>
 
         <!-- 更多按钮 -->
-        <view class="bar-btn" @tap="showMore = !showMore">
+        <view class="bar-btn" @tap="toggleMorePanel">
           <text>➕</text>
         </view>
 
@@ -307,6 +312,31 @@
         >
           <text>发送</text>
         </view>
+      </view>
+
+      <!-- @成员面板 -->
+      <view v-show="showMentionPanel" class="mention-panel">
+        <view class="mention-title-row">
+          <text class="mention-title">@ 家庭成员</text>
+          <text class="mention-tip">点头像快速插入</text>
+        </view>
+        <scroll-view scroll-x class="mention-scroll" show-scrollbar="false">
+          <view class="mention-list">
+            <view
+              v-for="member in mentionableMembers"
+              :key="member.id"
+              class="mention-chip"
+              :class="{ agent: member.is_agent }"
+              @tap="insertMention(member)"
+            >
+              <text class="mention-avatar">{{ member.avatar || '😀' }}</text>
+              <view class="mention-meta">
+                <text class="mention-name">{{ member.name }}</text>
+                <text class="mention-role">{{ member.is_agent ? '数字人' : '真人' }}</text>
+              </view>
+            </view>
+          </view>
+        </scroll-view>
       </view>
 
       <!-- 表情面板 -->
@@ -360,6 +390,34 @@
         </view>
       </view>
     </view>
+
+    <!-- 群信息 / 成员列表 -->
+    <view v-if="showGroupInfo" class="modal-mask" @tap="showGroupInfo = false">
+      <view class="group-info-panel" @tap.stop>
+        <view class="group-info-header">
+          <view>
+            <text class="group-info-title">{{ chatName }}</text>
+            <text class="group-info-subtitle">{{ groupMembers.length }} 位成员 · 可直接 @</text>
+          </view>
+          <text class="group-info-close" @tap="showGroupInfo = false">✕</text>
+        </view>
+        <scroll-view scroll-y class="group-member-list">
+          <view
+            v-for="member in groupMembers"
+            :key="member.id"
+            class="group-member-item"
+            @tap="insertMention(member); showGroupInfo = false"
+          >
+            <text class="group-member-avatar">{{ member.avatar || '😀' }}</text>
+            <view class="group-member-main">
+              <text class="group-member-name">{{ member.name }}</text>
+              <text class="group-member-desc">{{ member.is_agent ? '数字人，可@唤起回复' : '家庭成员' }}</text>
+            </view>
+            <text class="group-member-at">@</text>
+          </view>
+        </scroll-view>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -386,6 +444,7 @@ const isRecording = ref(false)
 const showEmoji = ref(false)
 const showMore = ref(false)
 const showGroupInfo = ref(false)
+const showMentionPanel = ref(false)
 const showMsgMenu = ref(false)
 const selectedMsg = ref(null)
 const menuStyle = ref({})
@@ -408,6 +467,7 @@ const searching = ref(false)
 const highlightMsgId = ref(null)
 const SEARCH_RESULT_LIMIT = 200
 const reactingMsgId = ref(null) // 防并发锁
+const groupMembers = ref([])
 
 // 快速表情回应
 const quickReactMsgId = ref(null)
@@ -419,6 +479,9 @@ let searchDebounce = null
 
 const currentUserId = computed(() => userStore.userInfo?.id)
 const messages = computed(() => chatStore.messagesMap[groupId.value] || [])
+const mentionableMembers = computed(() => {
+  return groupMembers.value.filter(member => member.id !== currentUserId.value)
+})
 
 // 过滤消息（搜索模式下只显示匹配的）
 const filteredMessages = computed(() => {
@@ -457,6 +520,9 @@ onLoad((options) => {
 
   // 加载群公告
   loadAnnouncement()
+
+  // 加载群成员，供@面板使用
+  loadGroupMembers()
 
   // 监听 WebSocket 消息
   ws.on('message', onWsMessage)
@@ -505,6 +571,17 @@ async function loadMessages() {
     scrollToBottom()
   } catch (e) {
     console.error('加载消息失败:', e)
+  }
+}
+
+async function loadGroupMembers() {
+  if (!groupId.value) return
+  try {
+    const res = await api.getGroupMembers(groupId.value)
+    groupMembers.value = Array.isArray(res) ? res : (res.members || [])
+  } catch (e) {
+    console.error('加载群成员失败:', e)
+    groupMembers.value = []
   }
 }
 
@@ -606,6 +683,7 @@ async function sendTextMessage() {
   inputText.value = ''
   showEmoji.value = false
   showMore.value = false
+  showMentionPanel.value = false
 
   try {
     await chatStore.sendMessage({
@@ -624,11 +702,54 @@ async function sendTextMessage() {
 // 输入变化 - 发送正在输入状态
 let inputThrottle = null
 function onInputChange() {
+  if (inputText.value.endsWith('@')) {
+    showMentionPanel.value = true
+    showEmoji.value = false
+    showMore.value = false
+  }
   if (inputThrottle) return
   inputThrottle = setTimeout(() => {
     inputThrottle = null
     ws.sendTyping(groupId.value, userStore.userInfo?.nickname || '我')
   }, 1000)
+}
+
+function toggleMentionPanel() {
+  showMentionPanel.value = !showMentionPanel.value
+  if (showMentionPanel.value) {
+    showEmoji.value = false
+    showMore.value = false
+    if (!groupMembers.value.length) loadGroupMembers()
+  }
+}
+
+function toggleEmojiPanel() {
+  showEmoji.value = !showEmoji.value
+  if (showEmoji.value) {
+    showMentionPanel.value = false
+    showMore.value = false
+  }
+}
+
+function toggleMorePanel() {
+  showMore.value = !showMore.value
+  if (showMore.value) {
+    showMentionPanel.value = false
+    showEmoji.value = false
+  }
+}
+
+function insertMention(member) {
+  if (!member?.name) return
+  const mentionText = `@${member.name} `
+  if (inputText.value.endsWith('@')) {
+    inputText.value = inputText.value.slice(0, -1) + mentionText
+  } else if (!inputText.value || /\s$/.test(inputText.value)) {
+    inputText.value += mentionText
+  } else {
+    inputText.value += ` ${mentionText}`
+  }
+  showMentionPanel.value = false
 }
 
 // 选择表情
@@ -646,6 +767,7 @@ function toggleVoiceMode() {
   voiceMode.value = !voiceMode.value
   showEmoji.value = false
   showMore.value = false
+  showMentionPanel.value = false
 }
 
 // 录音
@@ -1803,6 +1925,11 @@ function reEditMessage(msg) {
   }
 }
 
+.mention-btn {
+  font-weight: 700;
+  color: $primary-color;
+}
+
 .input-wrap {
   flex: 1;
   background: var(--bg-color);
@@ -1860,6 +1987,92 @@ function reEditMessage(msg) {
   &:active {
     opacity: 0.8;
   }
+}
+
+.mention-panel {
+  border-top: 1rpx solid var(--border-color);
+  background: var(--card-bg);
+  padding: 18rpx 20rpx 22rpx;
+}
+
+.mention-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14rpx;
+}
+
+.mention-title {
+  font-size: $font-sm;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.mention-tip {
+  font-size: $font-xs;
+  color: var(--text-secondary);
+}
+
+.mention-scroll {
+  white-space: nowrap;
+}
+
+.mention-list {
+  display: inline-flex;
+  gap: 14rpx;
+  padding-right: 20rpx;
+}
+
+.mention-chip {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  min-width: 190rpx;
+  padding: 14rpx 18rpx;
+  border-radius: 999rpx;
+  background: var(--bg-color);
+  border: 1rpx solid var(--border-color);
+
+  &.agent {
+    border-color: rgba(7, 193, 96, 0.35);
+    background: rgba(7, 193, 96, 0.08);
+  }
+
+  &:active {
+    opacity: 0.75;
+  }
+}
+
+.mention-avatar {
+  width: 52rpx;
+  height: 52rpx;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  font-size: 30rpx;
+}
+
+.mention-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.mention-name {
+  font-size: $font-sm;
+  color: var(--text-primary);
+  font-weight: 600;
+  max-width: 150rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mention-role {
+  font-size: 20rpx;
+  color: var(--text-secondary);
 }
 
 .panel-area {
@@ -1931,6 +2144,105 @@ function reEditMessage(msg) {
   padding: 16rpx 0;
   box-shadow: $shadow-lg;
   min-width: 300rpx;
+}
+
+.group-info-panel {
+  width: 640rpx;
+  max-height: 78vh;
+  background: var(--card-bg);
+  border-radius: $radius-lg;
+  overflow: hidden;
+  box-shadow: $shadow-lg;
+}
+
+.group-info-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 28rpx 32rpx;
+  border-bottom: 1rpx solid var(--border-color);
+}
+
+.group-info-title {
+  display: block;
+  font-size: $font-lg;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.group-info-subtitle {
+  display: block;
+  margin-top: 8rpx;
+  font-size: $font-xs;
+  color: var(--text-secondary);
+}
+
+.group-info-close {
+  font-size: 34rpx;
+  color: var(--text-secondary);
+  padding: 10rpx;
+}
+
+.group-member-list {
+  max-height: 640rpx;
+}
+
+.group-member-item {
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+  padding: 22rpx 32rpx;
+  border-bottom: 1rpx solid var(--border-color);
+
+  &:active {
+    background: var(--bg-color);
+  }
+}
+
+.group-member-avatar {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 16rpx;
+  background: var(--bg-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40rpx;
+  flex-shrink: 0;
+}
+
+.group-member-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
+
+.group-member-name {
+  font-size: $font-base;
+  color: var(--text-primary);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-member-desc {
+  font-size: $font-xs;
+  color: var(--text-secondary);
+}
+
+.group-member-at {
+  width: 48rpx;
+  height: 48rpx;
+  border-radius: 50%;
+  background: rgba(7, 193, 96, 0.12);
+  color: $primary-color;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
 }
 
 .menu-item {

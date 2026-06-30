@@ -5,6 +5,7 @@
 import asyncio
 import json
 import random
+import re
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -465,6 +466,8 @@ class DigitalHuman:
 8. 像真人一样有情绪变化
 9. 你的思维方式、知识结构、情感模式都经过炼化，要自然体现
 10. 你有内在矛盾和成长，不要完美，要真实
+11. 可以自然地@群里的家人或另一个数字人，但不要每句都@，只在需要拉人参与时使用
+12. 如果你不同意对方观点，可以像真实夫妻/家人一样表达分歧，但要有分寸，不要辱骂
 """
 
     def _get_essence_text(self) -> str:
@@ -573,7 +576,7 @@ class DigitalHuman:
         self.emotion.decay()
 
         # 回复概率
-        prob = 0.65
+        prob = 0.35
         if is_mentioned:
             prob = 0.98  # 被@几乎必回
         if self.emotion.current in ("excited", "angry"):
@@ -617,10 +620,55 @@ class DigitalHuman:
                 return reply.strip()
         except ValueError as e:
             logger.warning(f"[{self.name}] LLM 配置错误: {e}")
+            return await self._fallback_reply(message, sender_name, is_mentioned)
+        except httpx.HTTPStatusError as e:
+            logger.warning(f"[{self.name}] LLM HTTP 错误: {e.response.status_code}")
+            return await self._fallback_reply(message, sender_name, is_mentioned)
         except Exception as e:
             logger.error(f"[{self.name}] LLM 调用失败: {e}")
+            return await self._fallback_reply(message, sender_name, is_mentioned)
 
         return None
+
+    async def _fallback_reply(self, message: str, sender_name: str, is_mentioned: bool) -> Optional[str]:
+        if not is_mentioned and random.random() > 0.35:
+            return None
+
+        p = self.personality
+        profile_text = " ".join([
+            p.name, p.backstory, p.speaking_style, p.humor_style,
+            " ".join(p.traits), " ".join(p.interests),
+        ])
+        tech_keywords = ["SAP", "ERP", "APO", "供应链", "数字化", "出海", "系统", "项目", "上线"]
+        is_tech_topic = any(k.lower() in message.lower() for k in tech_keywords)
+
+        if any(k in profile_text for k in ["东北", "泼辣", "直爽", "供应链", "APO"]):
+            starters = ["我直说哈", "这事儿吧", "哎呀你别绕弯子", "按我做供应链的经验"]
+            if is_tech_topic:
+                body = "先把需求、约束和交付节奏摆明白，别一边上线一边拍脑袋。"
+            else:
+                body = "有话就摊开说，别憋着，家里人沟通就得痛快点。"
+            tail = random.choice(["@我 你也别光沉思，说两句。", "我看就这么整。", "别吵，先解决问题。"])
+            reply = f"{random.choice(starters)}，{body}{tail}"
+        elif any(k in profile_text for k in ["沉稳", "出海", "数字化", "思想", "战略"]):
+            starters = ["我想了一下", "这件事先别急", "我的判断是", "从数字化落地看"]
+            if is_tech_topic:
+                body = "先把业务目标、系统边界和海外落地风险拆清楚，再决定怎么推进。"
+            else:
+                body = "先把情绪放一放，抓住真正的问题，再慢慢沟通。"
+            tail = random.choice(["@老婆 你从供应链角度怎么看？", "我倾向于稳一点推进。", "别为了赢一口气把问题复杂化。"])
+            reply = f"{random.choice(starters)}，{body}{tail}"
+        else:
+            reply = random.choice([
+                f"{sender_name}，我在，先说重点。",
+                "我觉得可以，咱们继续聊。",
+                "这事儿我记下了，后面可以再细化。",
+            ])
+
+        self._last_reply = time.time()
+        self._consecutive += 1
+        await self.memory.add_short_term(reply, self.name)
+        return reply
 
     async def _call_llm(self, system_prompt: str, user_message: str) -> str:
         """调用 LLM API"""
@@ -809,9 +857,38 @@ class AgentManager:
             for a in self.agents.values()
         ]
 
+    def _mentioned_agent_ids(self, content: str) -> tuple[set[str], bool]:
+        lowered = content.lower()
+        mention_all = "@所有人" in content or "@all" in lowered or "@大家" in content
+        if mention_all:
+            return set(self.agents.keys()), True
+
+        mentioned = set()
+        tokens = re.findall(r"@([^\s@，,。！？!?:：]{1,24})", content)
+        for token in tokens:
+            clean = token.strip()
+            for agent_id, agent in self.agents.items():
+                names = {agent.personality.name, agent.name}
+                nickname = agent.identity.nickname
+                if nickname:
+                    names.add(nickname)
+                if clean in names:
+                    mentioned.add(agent_id)
+
+        for agent_id, agent in self.agents.items():
+            names = {agent.personality.name, agent.name}
+            nickname = agent.identity.nickname
+            if nickname:
+                names.add(nickname)
+            if any(f"@{name}" in content for name in names if name):
+                mentioned.add(agent_id)
+
+        return mentioned, bool(mentioned)
+
     async def handle_group_message(self, group_id: str, sender_id: str,
                                     sender_name: str, content: str,
-                                    msg_type: str = "text") -> list[dict]:
+                                    msg_type: str = "text",
+                                    max_replies: int = 2) -> list[dict]:
         """处理群消息"""
         replies = []
         
@@ -821,17 +898,20 @@ class AgentManager:
         elif msg_type == "voice":
             content = f"[{sender_name} 发了一条语音消息]"
 
-        for agent_id, agent in self.agents.items():
-            # @检测
-            name = agent.personality.name
-            is_mentioned = (
-                f"@{name}" in content or
-                content.startswith(f"@{name}") or
-                name in content or
-                "@所有人" in content or
-                "@all" in content.lower()
-            )
-            
+        mentioned_ids, has_explicit_mentions = self._mentioned_agent_ids(content)
+        sender_is_agent = sender_id in self.agents
+        agent_items = list(self.agents.items())
+        random.shuffle(agent_items)
+
+        for agent_id, agent in agent_items:
+            if agent_id == sender_id:
+                continue
+            is_mentioned = agent_id in mentioned_ids
+            if has_explicit_mentions and not is_mentioned:
+                continue
+            if sender_is_agent and not is_mentioned and random.random() > 0.45:
+                continue
+
             reply_text = await agent.think(content, sender_name, is_mentioned)
 
             if reply_text:
@@ -846,6 +926,6 @@ class AgentManager:
                     "delay": delay,
                 })
 
-        if len(replies) > 2:
-            replies = sorted(replies, key=lambda x: x["delay"])[:2]
+        if len(replies) > max_replies:
+            replies = sorted(replies, key=lambda x: x["delay"])[:max_replies]
         return replies

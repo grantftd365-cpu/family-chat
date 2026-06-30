@@ -444,13 +444,15 @@ async def send_message(req: SendMessageReq, user=Depends(get_current_user)):
 
 
 async def _handle_agent_replies(group_id: str, sender_id: str, sender_name: str,
-                                content: str, msg_type: str):
+                                content: str, msg_type: str, depth: int = 0):
     """处理 Agent 回复，支持语音合成"""
     from ..main import agent_manager, voice_profile_manager
     try:
         replies = await agent_manager.handle_group_message(
-            group_id, sender_id, sender_name, content, msg_type
+            group_id, sender_id, sender_name, content, msg_type,
+            max_replies=1 if depth > 0 or sender_id.startswith("agent_") else 2
         )
+        followup_seed = None
         for reply in replies:
             db = await get_db()
             try:
@@ -493,8 +495,15 @@ async def _handle_agent_replies(group_id: str, sender_id: str, sender_name: str,
                     }
                 }
                 await ws_manager.broadcast_to_group(group_id, ws_data)
+                if depth == 0 and not followup_seed:
+                    followup_seed = reply
             finally:
                 await db.close()
+        if depth == 0 and followup_seed:
+            asyncio.create_task(_handle_agent_replies(
+                group_id, followup_seed["agent_id"], followup_seed["agent_name"],
+                followup_seed["content"], "text", depth + 1
+            ))
     except Exception as e:
         logger.error(f"Agent 回复处理失败: {e}")
 

@@ -98,6 +98,7 @@ async def update_agent(agent_id: str, req: UpdateAgentReq, user=Depends(get_curr
 
     p = agent.personality
     if req.name:
+        agent.name = req.name
         p.name = req.name
     if req.avatar:
         p.avatar = req.avatar
