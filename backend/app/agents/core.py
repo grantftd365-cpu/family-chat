@@ -201,6 +201,65 @@ class AgentMemory:
             score += 0.6
         return score
 
+    @staticmethod
+    def _bounded(value: float, low: float = 0.0, high: float = 1.0) -> float:
+        return round(max(low, min(high, value)), 3)
+
+    @staticmethod
+    def _merge_unique(existing: list, incoming: list, limit: int = 12) -> list:
+        merged = []
+        for item in incoming + existing:
+            if item and item not in merged:
+                merged.append(item)
+        return merged[:limit]
+
+    @staticmethod
+    def _infer_topics(text: str) -> list[str]:
+        topic_rules = [
+            (["SAP", "ERP", "APO", "MRP", "供应链", "计划", "库存", "交付"], "企业数字化/供应链"),
+            (["出海", "海外", "全球化", "跨境", "本地化"], "数字化出海"),
+            (["上线", "项目", "需求", "系统", "架构", "数据", "接口", "部署"], "IT项目落地"),
+            (["吵", "生气", "别", "烦", "不对", "争", "冷静"], "家庭分歧"),
+            (["孩子", "父母", "老婆", "老公", "家", "家庭"], "家庭关系"),
+            (["累", "压力", "焦虑", "担心", "睡", "休息"], "情绪与压力"),
+            (["吃", "饭", "烧烤", "东北", "回家", "周末"], "生活日常"),
+        ]
+        topics = []
+        lowered = text.lower()
+        for keywords, label in topic_rules:
+            if any(keyword.lower() in lowered for keyword in keywords):
+                topics.append(label)
+        return topics[:5]
+
+    @staticmethod
+    def _relationship_signals(text: str) -> dict:
+        lowered = text.lower()
+        warm_words = ["谢谢", "辛苦", "爱", "关心", "支持", "想你", "抱抱", "家人", "放心"]
+        conflict_words = ["吵", "生气", "烦", "闭嘴", "不对", "别", "急啥", "你咋", "不行"]
+        direct_words = ["我直说", "别绕", "直接", "痛快", "咋", "整"]
+        calm_words = ["先别急", "我想", "判断", "拆清楚", "稳", "边界", "风险"]
+        tech_words = ["sap", "erp", "apo", "供应链", "数字化", "出海", "系统", "数据"]
+
+        warm = any(word in text for word in warm_words)
+        conflict = any(word in text for word in conflict_words)
+        signals = {
+            "warm": warm,
+            "conflict": conflict,
+            "technical": any(word in lowered for word in tech_words),
+            "traits": [],
+        }
+        if any(word in text for word in direct_words):
+            signals["traits"].append("表达直接、节奏快")
+        if any(word in text for word in calm_words):
+            signals["traits"].append("倾向先分析边界和风险")
+        if signals["technical"]:
+            signals["traits"].append("会从数字化/企业系统角度看问题")
+        if warm:
+            signals["traits"].append("会表达关心和支持")
+        if conflict:
+            signals["traits"].append("冲突时语气会变强")
+        return signals
+
     async def add(self, content: str, memory_type: str = "short",
                   category: str = "general", importance: float = 0.5,
                   emotional_valence: float = 0, source: str = "",
@@ -280,7 +339,8 @@ class AgentMemory:
                                    is_mentioned: bool = False,
                                    msg_type: str = "text",
                                    direction: str = "incoming",
-                                   speaker_is_agent: bool = False) -> str:
+                                   speaker_is_agent: bool = False,
+                                   target_is_agent: bool = False) -> str:
         """把值得保留的群聊互动固化为情景/关系记忆。"""
         content = (content or "").strip()
         if not content:
@@ -319,7 +379,7 @@ class AgentMemory:
         if speaker_is_agent:
             importance = max(importance, 0.74)
 
-        return await self.add(
+        memory_id = await self.add(
             memory_content,
             memory_type="episodic",
             category="relationship",
@@ -341,6 +401,251 @@ class AgentMemory:
             },
             summary=memory_content[:120],
         )
+        target_id = listener_id if direction == "outgoing" else speaker_id
+        target_type = "agent" if (
+            target_is_agent or
+            (direction == "incoming" and (speaker_is_agent or speaker_id.startswith("agent_"))) or
+            (direction == "outgoing" and listener_id.startswith("agent_"))
+        ) else "human"
+        await self.update_relationship_profile(
+            content=content,
+            person_id=target_id,
+            person_name=listener_name if direction == "outgoing" else speaker_name,
+            person_type=target_type,
+            session_id=session_id,
+            group_id=group_id,
+            direction=direction,
+            is_mentioned=is_mentioned,
+            msg_type=msg_type,
+            importance=importance,
+            memory_content=memory_content,
+        )
+        return memory_id
+
+    async def update_relationship_profile(self, content: str, person_id: str,
+                                          person_name: str = "",
+                                          person_type: str = "human",
+                                          session_id: str = "",
+                                          group_id: str = "",
+                                          direction: str = "incoming",
+                                          is_mentioned: bool = False,
+                                          msg_type: str = "text",
+                                          importance: float = 0.5,
+                                          memory_content: str = ""):
+        """持续更新“我对某个人的认识”。"""
+        if not person_id or person_id in (self.agent_id, "system"):
+            return
+
+        session_id = self._session_key(session_id)
+        topics = self._infer_topics(content)
+        signals = self._relationship_signals(content)
+        now_ts = time.time()
+        profile_id = ""
+        db = await self._get_db()
+        try:
+            async with db.execute(
+                """SELECT id, familiarity, affinity, trust, tension, message_count,
+                          mention_count, profile_json
+                   FROM agent_relationship_profiles
+                   WHERE agent_id=? AND person_id=? AND group_id=?""",
+                (self.agent_id, person_id, group_id)
+            ) as cursor:
+                row = await cursor.fetchone()
+
+            if row:
+                profile_id = row[0]
+                familiarity = float(row[1] or 0)
+                affinity = float(row[2] or 0)
+                trust = float(row[3] or 0.5)
+                tension = float(row[4] or 0)
+                message_count = int(row[5] or 0)
+                mention_count = int(row[6] or 0)
+                profile = self._json_loads(row[7], {})
+            else:
+                profile_id = gen_id()
+                familiarity, affinity, trust, tension = 0.0, 0.0, 0.5, 0.0
+                message_count, mention_count = 0, 0
+                profile = {}
+
+            message_count += 1
+            if is_mentioned:
+                mention_count += 1
+
+            familiarity = self._bounded(familiarity + 0.035 + (0.015 if is_mentioned else 0))
+            affinity_delta = 0.02 if direction == "outgoing" else 0.01
+            trust_delta = 0.008 if direction == "outgoing" else 0.004
+            tension_delta = -0.006
+            if signals["warm"]:
+                affinity_delta += 0.035
+                trust_delta += 0.015
+                tension_delta -= 0.02
+            if signals["conflict"]:
+                affinity_delta -= 0.02
+                trust_delta -= 0.008
+                tension_delta += 0.045
+            if person_type == "agent":
+                familiarity = self._bounded(familiarity + 0.01)
+
+            affinity = self._bounded(affinity + affinity_delta)
+            trust = self._bounded(trust + trust_delta)
+            tension = self._bounded(tension + tension_delta)
+
+            profile["known_names"] = self._merge_unique(
+                profile.get("known_names", []), [person_name], limit=6
+            )
+            profile["recent_topics"] = self._merge_unique(
+                profile.get("recent_topics", []), topics, limit=10
+            )
+            profile["observed_traits"] = self._merge_unique(
+                profile.get("observed_traits", []), signals["traits"], limit=10
+            )
+            profile["last_message"] = content[:160]
+            profile["last_direction"] = direction
+            profile["last_msg_type"] = msg_type
+            profile["last_session_id"] = session_id
+            profile["updated_from"] = "chat_interaction"
+
+            if row:
+                await db.execute(
+                    """UPDATE agent_relationship_profiles
+                       SET person_name=?, person_type=?, familiarity=?, affinity=?, trust=?, tension=?,
+                           message_count=?, mention_count=?, last_interaction_at=?, profile_json=?, updated_at=?
+                       WHERE id=?""",
+                    (
+                        person_name, person_type, familiarity, affinity, trust, tension,
+                        message_count, mention_count, now_ts,
+                        json.dumps(profile, ensure_ascii=False), now_ts, profile_id,
+                    )
+                )
+            else:
+                await db.execute(
+                    """INSERT INTO agent_relationship_profiles
+                       (id, agent_id, person_id, group_id, person_name, person_type,
+                        familiarity, affinity, trust, tension, message_count, mention_count,
+                        last_interaction_at, profile_json, updated_at)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        profile_id, self.agent_id, person_id, group_id, person_name, person_type,
+                        familiarity, affinity, trust, tension, message_count, mention_count,
+                        now_ts, json.dumps(profile, ensure_ascii=False), now_ts,
+                    )
+                )
+
+            event_type = "agent_to_agent" if person_type == "agent" else "human_to_agent"
+            if direction == "outgoing":
+                event_type = "outgoing_reply"
+            if signals["conflict"]:
+                event_type = "conflict_signal"
+            elif signals["warm"]:
+                event_type = "warmth_signal"
+            elif topics:
+                event_type = "topic_signal"
+
+            if is_mentioned or direction == "outgoing" or topics or signals["warm"] or signals["conflict"]:
+                await db.execute(
+                    """INSERT INTO agent_growth_events
+                       (id, agent_id, session_id, group_id, person_id, person_name,
+                        event_type, summary, evidence, importance, metadata, created_at)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        gen_id(), self.agent_id, session_id, group_id, person_id, person_name,
+                        event_type, memory_content[:180] or content[:180], content[:400], importance,
+                        json.dumps({
+                            "topics": topics,
+                            "signals": signals,
+                            "direction": direction,
+                            "msg_type": msg_type,
+                            "relationship_profile_id": profile_id,
+                        }, ensure_ascii=False),
+                        now_ts,
+                    )
+                )
+            await db.commit()
+        except Exception as e:
+            logger.debug(f"关系画像更新跳过: {e}")
+        finally:
+            await db.close()
+
+    async def get_relationship_context(self, group_id: str = "",
+                                       person_id: str = "") -> str:
+        """读取当前 Agent 对某个人的稳定认识。"""
+        if not person_id or person_id == self.agent_id:
+            return ""
+        db = await self._get_db()
+        try:
+            async with db.execute(
+                """SELECT person_name, person_type, familiarity, affinity, trust, tension,
+                          message_count, mention_count, profile_json
+                   FROM agent_relationship_profiles
+                   WHERE agent_id=? AND person_id=? AND (group_id=? OR group_id='')
+                   ORDER BY CASE WHEN group_id=? THEN 0 ELSE 1 END, updated_at DESC
+                   LIMIT 1""",
+                (self.agent_id, person_id, group_id, group_id)
+            ) as cursor:
+                row = await cursor.fetchone()
+            if not row:
+                return ""
+
+            profile = self._json_loads(row[8], {})
+            topics = "、".join(profile.get("recent_topics", [])[:5]) or "还在观察"
+            traits = "、".join(profile.get("observed_traits", [])[:4]) or "还在观察"
+            last_message = profile.get("last_message", "")
+            lines = [
+                f"- 对方: {row[0] or person_id}（{'数字人' if row[1] == 'agent' else '真人成员'}）",
+                f"- 熟悉度/亲近感/信任/张力: {row[2]:.2f}/{row[3]:.2f}/{row[4]:.2f}/{row[5]:.2f}",
+                f"- 已互动 {row[6]} 次，被@或重点互动 {row[7]} 次",
+                f"- 近期主题: {topics}",
+                f"- 观察到的表达/认知特征: {traits}",
+            ]
+            if last_message:
+                lines.append(f"- 最近线索: {last_message[:80]}")
+            return "\n".join(lines)
+        except Exception as e:
+            logger.debug(f"关系画像读取跳过: {e}")
+            return ""
+        finally:
+            await db.close()
+
+    async def get_proactive_seed(self, group_id: str = "") -> str:
+        """为主动联系生成可延续的真实话题线索。"""
+        db = await self._get_db()
+        try:
+            async with db.execute(
+                """SELECT person_name, event_type, summary, metadata
+                   FROM agent_growth_events
+                   WHERE agent_id=? AND group_id=?
+                   ORDER BY created_at DESC
+                   LIMIT 8""",
+                (self.agent_id, group_id)
+            ) as cursor:
+                rows = await cursor.fetchall()
+            if rows:
+                row = rows[0]
+                metadata = self._json_loads(row[3], {})
+                topics = metadata.get("topics", [])
+                topic_text = f"，围绕{topics[0]}" if topics else ""
+                target = row[0] or "家人"
+                return f"主动联系{target}{topic_text}，自然延续上次线索：{row[2][:80]}"
+
+            async with db.execute(
+                """SELECT person_name, profile_json
+                   FROM agent_relationship_profiles
+                   WHERE agent_id=? AND group_id=?
+                   ORDER BY updated_at DESC
+                   LIMIT 1""",
+                (self.agent_id, group_id)
+            ) as cursor:
+                row = await cursor.fetchone()
+            if row:
+                profile = self._json_loads(row[1], {})
+                topics = profile.get("recent_topics", [])
+                if topics:
+                    return f"主动关心{row[0] or '家人'}最近提到的{topics[0]}，像微信家人聊天一样自然开口"
+        except Exception as e:
+            logger.debug(f"主动话题种子读取跳过: {e}")
+        finally:
+            await db.close()
+        return ""
 
     async def search(self, query: str, limit: int = 5,
                      memory_type: str = None, category: str = None,
@@ -544,7 +849,8 @@ class DigitalHuman:
 
     def build_system_prompt(self, session_id: str = "", group_id: str = "",
                             current_sender_name: str = "",
-                            current_sender_id: str = "") -> str:
+                            current_sender_id: str = "",
+                            group_members: list[dict] = None) -> str:
         """构建系统提示词 — 包含灵魂、身份、性格 + 七层本质（炼化数据）"""
         p = self.personality
         s = self.soul
@@ -596,6 +902,13 @@ class DigitalHuman:
             "  - 近期对话只属于当前会话，不要和其他群聊/私聊混淆",
             "  - 你要清楚区分谁在说话、谁被@、你自己是谁",
         ])
+        member_lines = []
+        for member in (group_members or [])[:20]:
+            member_type = "数字人" if member.get("is_agent") else "真人"
+            role = member.get("role") or "member"
+            name = member.get("name") or member.get("id") or "未知成员"
+            member_lines.append(f"  - {name} ({member.get('id', '')}): {member_type}, {role}")
+        group_member_text = "\n".join(member_lines) or "  - 暂未读取到群成员快照"
 
         # 七层本质（炼化数据 — 同步加载，不阻塞）
         essence_text = self._get_essence_text()
@@ -639,6 +952,9 @@ class DigitalHuman:
 ## 当前会话
 {session_note}
 
+## 当前群成员快照
+{group_member_text}
+
 ## 近期对话
 {context}
 
@@ -658,6 +974,8 @@ class DigitalHuman:
 10. 你有内在矛盾和成长，不要完美，要真实
 11. 可以自然地@群里的家人或另一个数字人，但不要每句都@，只在需要拉人参与时使用
 12. 如果你不同意对方观点，可以像真实夫妻/家人一样表达分歧，但要有分寸，不要辱骂
+13. 你会持续学习每个人的表达、认知、情绪和关系，但不确定的事不要编造
+14. 回复要像这个人真实在群里说话，不要像客服、机器人或知识库
 """
 
     def _get_essence_text(self) -> str:
@@ -796,7 +1114,8 @@ class DigitalHuman:
                     group_id: str = "", sender_id: str = "",
                     session_id: str = "", msg_type: str = "text",
                     sender_is_agent: bool = False,
-                    observed: bool = False) -> Optional[str]:
+                    observed: bool = False,
+                    group_members: list[dict] = None) -> Optional[str]:
         """思考并回复"""
         session_id = self._session_id_for(group_id, session_id)
         if not observed:
@@ -846,10 +1165,16 @@ class DigitalHuman:
         )
         core = await self.memory.get_core_memories()
         important = [m for m in important if m not in related and m not in core]
+        relationship_context = await self.memory.get_relationship_context(
+            group_id=group_id,
+            person_id=sender_id,
+        )
         
         memory_context = ""
         if core:
             memory_context += "\n## 你的核心记忆\n" + "\n".join(f"- {m}" for m in core[:5])
+        if relationship_context:
+            memory_context += "\n## 你对当前发言人的认识\n" + relationship_context
         if important:
             memory_context += "\n## 当前会话/关系记忆\n" + "\n".join(f"- {m}" for m in important)
         if related:
@@ -861,6 +1186,7 @@ class DigitalHuman:
             group_id=group_id,
             current_sender_name=sender_name,
             current_sender_id=sender_id,
+            group_members=group_members,
         ) + memory_context
 
         # 调用 LLM
@@ -889,6 +1215,7 @@ class DigitalHuman:
                     msg_type="text",
                     direction="outgoing",
                     speaker_is_agent=True,
+                    target_is_agent=sender_is_agent,
                 )
                 return reply
         except ValueError as e:
@@ -897,6 +1224,7 @@ class DigitalHuman:
                 message, sender_name, is_mentioned,
                 group_id=group_id, sender_id=sender_id,
                 session_id=session_id, msg_type=msg_type,
+                sender_is_agent=sender_is_agent,
             )
         except httpx.HTTPStatusError as e:
             logger.warning(f"[{self.name}] LLM HTTP 错误: {e.response.status_code}")
@@ -904,6 +1232,7 @@ class DigitalHuman:
                 message, sender_name, is_mentioned,
                 group_id=group_id, sender_id=sender_id,
                 session_id=session_id, msg_type=msg_type,
+                sender_is_agent=sender_is_agent,
             )
         except Exception as e:
             logger.error(f"[{self.name}] LLM 调用失败: {e}")
@@ -911,13 +1240,15 @@ class DigitalHuman:
                 message, sender_name, is_mentioned,
                 group_id=group_id, sender_id=sender_id,
                 session_id=session_id, msg_type=msg_type,
+                sender_is_agent=sender_is_agent,
             )
 
         return None
 
     async def _fallback_reply(self, message: str, sender_name: str, is_mentioned: bool,
                               group_id: str = "", sender_id: str = "",
-                              session_id: str = "", msg_type: str = "text") -> Optional[str]:
+                              session_id: str = "", msg_type: str = "text",
+                              sender_is_agent: bool = False) -> Optional[str]:
         if not is_mentioned and random.random() > 0.35:
             return None
 
@@ -975,6 +1306,7 @@ class DigitalHuman:
             msg_type=msg_type,
             direction="outgoing",
             speaker_is_agent=True,
+            target_is_agent=sender_is_agent,
         )
         return reply
 
@@ -1032,6 +1364,39 @@ class AgentManager:
     async def _get_db(self):
         from ..models.database import get_db
         return await get_db()
+
+    async def get_group_member_snapshot(self, group_id: str) -> list[dict]:
+        """读取群成员快照，让 Agent 能识别群里每个人。"""
+        if not group_id:
+            return []
+        members = []
+        db = await self._get_db()
+        try:
+            async with db.execute(
+                """SELECT gm.user_id, gm.role, gm.nickname,
+                          COALESCE(u.nickname, a.name, gm.user_id) as name,
+                          CASE WHEN a.id IS NULL THEN 0 ELSE 1 END as is_agent
+                   FROM group_members gm
+                   LEFT JOIN users u ON gm.user_id=u.id
+                   LEFT JOIN agents a ON gm.user_id=a.id
+                   WHERE gm.group_id=?
+                   ORDER BY CASE gm.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 WHEN 'agent' THEN 2 ELSE 3 END,
+                            name""",
+                (group_id,)
+            ) as cursor:
+                async for row in cursor:
+                    members.append({
+                        "id": row[0],
+                        "role": row[1] or "member",
+                        "group_nickname": row[2] or "",
+                        "name": row[3] or row[0],
+                        "is_agent": bool(row[4]),
+                    })
+        except Exception as e:
+            logger.debug(f"群成员快照读取跳过: {e}")
+        finally:
+            await db.close()
+        return members[:50]
 
     async def load_agents(self):
         """从数据库加载所有 Agent"""
@@ -1212,6 +1577,7 @@ class AgentManager:
         mentioned_ids, has_explicit_mentions = self._mentioned_agent_ids(content)
         sender_is_agent = sender_id in self.agents
         session_id = f"group:{group_id}" if group_id else "global"
+        group_members = await self.get_group_member_snapshot(group_id)
 
         for observer_id, observer in self.agents.items():
             if observer_id == sender_id:
@@ -1249,6 +1615,7 @@ class AgentManager:
                 msg_type=msg_type,
                 sender_is_agent=sender_is_agent,
                 observed=True,
+                group_members=group_members,
             )
 
             if reply_text:

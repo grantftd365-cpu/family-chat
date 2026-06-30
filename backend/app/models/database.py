@@ -177,6 +177,48 @@ async def init_db():
         CREATE INDEX IF NOT EXISTS idx_memories_agent ON agent_memories(agent_id);
         CREATE INDEX IF NOT EXISTS idx_memories_type ON agent_memories(agent_id, memory_type);
 
+        -- ==================== Agent 关系画像表 ====================
+        -- 每个数字人对每个群成员/数字人的独立理解，不共享脑子
+        CREATE TABLE IF NOT EXISTS agent_relationship_profiles (
+            id TEXT PRIMARY KEY,
+            agent_id TEXT NOT NULL,
+            person_id TEXT NOT NULL,
+            group_id TEXT DEFAULT '',
+            person_name TEXT DEFAULT '',
+            person_type TEXT DEFAULT 'human',
+            familiarity REAL DEFAULT 0,
+            affinity REAL DEFAULT 0,
+            trust REAL DEFAULT 0.5,
+            tension REAL DEFAULT 0,
+            message_count INTEGER DEFAULT 0,
+            mention_count INTEGER DEFAULT 0,
+            last_interaction_at REAL DEFAULT 0,
+            profile_json TEXT DEFAULT '{}',
+            updated_at REAL NOT NULL,
+            UNIQUE(agent_id, person_id, group_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_relationship_agent_person ON agent_relationship_profiles(agent_id, person_id);
+        CREATE INDEX IF NOT EXISTS idx_relationship_group ON agent_relationship_profiles(agent_id, group_id, updated_at);
+
+        -- ==================== Agent 成长事件表 ====================
+        -- 从聊天中沉淀可追溯的成长证据，用于主动联系和后续记忆整理
+        CREATE TABLE IF NOT EXISTS agent_growth_events (
+            id TEXT PRIMARY KEY,
+            agent_id TEXT NOT NULL,
+            session_id TEXT DEFAULT '',
+            group_id TEXT DEFAULT '',
+            person_id TEXT DEFAULT '',
+            person_name TEXT DEFAULT '',
+            event_type TEXT DEFAULT 'interaction',
+            summary TEXT NOT NULL,
+            evidence TEXT DEFAULT '',
+            importance REAL DEFAULT 0.5,
+            metadata TEXT DEFAULT '{}',
+            created_at REAL NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_growth_agent_group ON agent_growth_events(agent_id, group_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_growth_agent_person ON agent_growth_events(agent_id, person_id, created_at);
+
         -- ==================== 炼化记录表 ====================
         CREATE TABLE IF NOT EXISTS refinement_logs (
             id TEXT PRIMARY KEY,

@@ -409,6 +409,66 @@ async def test_agent_memory_sessions():
     return r
 
 
+async def test_agent_relationship_growth():
+    print("\n📋 Agent 关系画像成长测试")
+    r = TestResult()
+
+    from backend.app.models.database import init_db, get_db
+    from backend.app.agents.core import AgentMemory
+
+    await init_db()
+    agent_id = "agent_growth_test"
+    group_id = "group_growth_test"
+    person_id = "user_wife_test"
+    memory = AgentMemory(agent_id, None)
+
+    await memory.remember_interaction(
+        "我直说哈，SAP APO供应链这块别拍脑袋上线，先把约束和计划排清楚。",
+        speaker_name="老婆",
+        speaker_id=person_id,
+        session_id=f"group:{group_id}",
+        group_id=group_id,
+        listener_id=agent_id,
+        listener_name="我",
+        is_mentioned=True,
+        msg_type="text",
+        direction="incoming",
+        speaker_is_agent=False,
+    )
+
+    context = await memory.get_relationship_context(group_id=group_id, person_id=person_id)
+    if "老婆" in context and "企业数字化/供应链" in context:
+        r.ok("关系画像记录了人名和主题")
+    else:
+        r.fail("关系画像内容", context)
+
+    seed = await memory.get_proactive_seed(group_id=group_id)
+    if "老婆" in seed and ("供应链" in seed or "企业数字化" in seed):
+        r.ok("主动联系种子来自成长事件")
+    else:
+        r.fail("主动联系种子", seed)
+
+    db = await get_db()
+    try:
+        async with db.execute(
+            "SELECT COUNT(*) FROM agent_growth_events WHERE agent_id=? AND person_id=?",
+            (agent_id, person_id)
+        ) as cursor:
+            row = await cursor.fetchone()
+        if row[0] >= 1:
+            r.ok("成长事件已持久化")
+        else:
+            r.fail("成长事件", "未写入")
+        await db.execute("DELETE FROM agent_relationship_profiles WHERE agent_id=?", (agent_id,))
+        await db.execute("DELETE FROM agent_growth_events WHERE agent_id=?", (agent_id,))
+        await db.execute("DELETE FROM agent_memories WHERE agent_id=?", (agent_id,))
+        await db.commit()
+    finally:
+        await db.close()
+
+    return r
+
+
 # ==================== 运行所有测试 ====================
 
 def main():
@@ -428,6 +488,7 @@ def main():
     # 异步测试
     results.append(run_async(test_reactions()))
     results.append(run_async(test_agent_memory_sessions()))
+    results.append(run_async(test_agent_relationship_growth()))
 
     # 汇总
     all_passed = all(r.summary() for r in results)

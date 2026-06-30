@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
 from loguru import logger
 
@@ -142,6 +142,84 @@ async def agent_memories(agent_id: str, user=Depends(get_current_user)):
                     "type": row[3], "category": row[4], "created_at": row[5],
                 })
         return memories
+    finally:
+        await db.close()
+
+
+@router.get("/{agent_id}/relationships")
+async def agent_relationships(agent_id: str, group_id: str = Query(""),
+                              user=Depends(get_current_user)):
+    db = await get_db()
+    try:
+        sql = """SELECT id, person_id, group_id, person_name, person_type,
+                        familiarity, affinity, trust, tension, message_count,
+                        mention_count, last_interaction_at, profile_json, updated_at
+                 FROM agent_relationship_profiles
+                 WHERE agent_id=?"""
+        params = [agent_id]
+        if group_id:
+            sql += " AND group_id=?"
+            params.append(group_id)
+        sql += " ORDER BY updated_at DESC LIMIT 100"
+
+        relationships = []
+        async with db.execute(sql, params) as cursor:
+            async for row in cursor:
+                relationships.append({
+                    "id": row[0],
+                    "person_id": row[1],
+                    "group_id": row[2],
+                    "person_name": row[3],
+                    "person_type": row[4],
+                    "familiarity": row[5],
+                    "affinity": row[6],
+                    "trust": row[7],
+                    "tension": row[8],
+                    "message_count": row[9],
+                    "mention_count": row[10],
+                    "last_interaction_at": row[11],
+                    "profile": json.loads(row[12] or "{}"),
+                    "updated_at": row[13],
+                })
+        return relationships
+    finally:
+        await db.close()
+
+
+@router.get("/{agent_id}/growth-events")
+async def agent_growth_events(agent_id: str, group_id: str = Query(""),
+                              limit: int = Query(50, ge=1, le=200),
+                              user=Depends(get_current_user)):
+    db = await get_db()
+    try:
+        sql = """SELECT id, session_id, group_id, person_id, person_name,
+                        event_type, summary, evidence, importance, metadata, created_at
+                 FROM agent_growth_events
+                 WHERE agent_id=?"""
+        params = [agent_id]
+        if group_id:
+            sql += " AND group_id=?"
+            params.append(group_id)
+        sql += " ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
+
+        events = []
+        async with db.execute(sql, params) as cursor:
+            async for row in cursor:
+                events.append({
+                    "id": row[0],
+                    "session_id": row[1],
+                    "group_id": row[2],
+                    "person_id": row[3],
+                    "person_name": row[4],
+                    "event_type": row[5],
+                    "summary": row[6],
+                    "evidence": row[7],
+                    "importance": row[8],
+                    "metadata": json.loads(row[9] or "{}"),
+                    "created_at": row[10],
+                })
+        return events
     finally:
         await db.close()
 

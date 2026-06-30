@@ -64,7 +64,9 @@ async def _proactive_scheduler():
                                 continue
                             group_id = g_row[0]
                         topics = cfg.get("topics", [])
-                        topic = topics[int(_time.time()) % len(topics)] if topics else "跟家人打个招呼"
+                        growth_seed = await agent.memory.get_proactive_seed(group_id)
+                        topic = growth_seed or (topics[int(_time.time()) % len(topics)] if topics else "跟家人打个招呼")
+                        group_members = await agent_manager.get_group_member_snapshot(group_id)
                         try:
                             reply = await agent.think(
                                 f"[{topic}]",
@@ -74,6 +76,7 @@ async def _proactive_scheduler():
                                 sender_id="system",
                                 session_id=f"group:{group_id}",
                                 msg_type="system",
+                                group_members=group_members,
                             )
                             if reply:
                                 from .models.database import gen_id as _gid
@@ -106,8 +109,8 @@ async def _proactive_scheduler():
                                     "data": {
                                         "id": msg_id, "group_id": g_row[0],
                                         "sender_id": row[0], "sender_name": row[1],
-                                        "content": reply, "msg_type": "text",
-                                        "is_agent": True, "created_at": ts,
+                                        "content": reply, "msg_type": msg_type,
+                                        "media_url": voice_url, "is_agent": True, "created_at": ts,
                                         "reactions": [],
                                     }
                                 })
