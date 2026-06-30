@@ -66,7 +66,15 @@ async def _proactive_scheduler():
                         topics = cfg.get("topics", [])
                         topic = topics[int(_time.time()) % len(topics)] if topics else "跟家人打个招呼"
                         try:
-                            reply = await agent.think(f"[{topic}]", "系统", True)
+                            reply = await agent.think(
+                                f"[{topic}]",
+                                "系统",
+                                True,
+                                group_id=group_id,
+                                sender_id="system",
+                                session_id=f"group:{group_id}",
+                                msg_type="system",
+                            )
                             if reply:
                                 from .models.database import gen_id as _gid
                                 msg_id = _gid()

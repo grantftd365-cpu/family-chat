@@ -52,7 +52,11 @@ class TestResult:
 
 
 def run_async(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    return loop.run_until_complete(coro)
 
 
 # ==================== 1. Auth 测试 ====================
@@ -359,6 +363,52 @@ def test_file_validation():
     return r
 
 
+# ==================== 7. Agent 会话记忆测试 ====================
+
+async def test_agent_memory_sessions():
+    print("\n📋 Agent 会话记忆隔离测试")
+    r = TestResult()
+
+    from backend.app.agents.core import AgentMemory
+
+    memory = AgentMemory("agent_test", None)
+    await memory.add_short_term(
+        "今天聊ERP上线风险",
+        "我",
+        session_id="group:A",
+        sender_id="user_a",
+        group_id="A",
+    )
+    await memory.add_short_term(
+        "周末回东北吃烧烤",
+        "老婆",
+        session_id="group:B",
+        sender_id="user_b",
+        group_id="B",
+    )
+
+    ctx_a = memory.get_context(session_id="group:A")
+    ctx_b = memory.get_context(session_id="group:B")
+    if "ERP上线" in ctx_a and "东北吃烧烤" not in ctx_a:
+        r.ok("群 A 只读取自己的短期记忆")
+    else:
+        r.fail("群 A 记忆隔离", ctx_a)
+
+    if "东北吃烧烤" in ctx_b and "ERP上线" not in ctx_b:
+        r.ok("群 B 只读取自己的短期记忆")
+    else:
+        r.fail("群 B 记忆隔离", ctx_b)
+
+    await memory.add_short_term("系统主动问候", "系统")
+    ctx_a_after = memory.get_context(session_id="group:A")
+    if "系统主动问候" in memory.get_context() and "系统主动问候" not in ctx_a_after:
+        r.ok("默认 session 与群 session 分离")
+    else:
+        r.fail("默认 session", memory.get_context())
+
+    return r
+
+
 # ==================== 运行所有测试 ====================
 
 def main():
@@ -377,6 +427,7 @@ def main():
 
     # 异步测试
     results.append(run_async(test_reactions()))
+    results.append(run_async(test_agent_memory_sessions()))
 
     # 汇总
     all_passed = all(r.summary() for r in results)

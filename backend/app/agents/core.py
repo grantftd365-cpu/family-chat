@@ -159,11 +159,47 @@ class AgentMemory:
     def __init__(self, agent_id: str, db):
         self.agent_id = agent_id
         self.db = db
-        self._short_term: list[dict] = []
+        self._short_term: dict[str, list[dict]] = {}
+        self._max_short_sessions = 50
 
     async def _get_db(self):
         from ..models.database import get_db
         return await get_db()
+
+    def _session_key(self, session_id: str = "") -> str:
+        return session_id or "global"
+
+    @staticmethod
+    def _json_loads(value, default):
+        if not value:
+            return default
+        try:
+            return json.loads(value)
+        except Exception:
+            return default
+
+    def _trim_short_term_sessions(self):
+        if len(self._short_term) <= self._max_short_sessions:
+            return
+        sessions = sorted(
+            self._short_term.items(),
+            key=lambda item: item[1][-1].get("time", 0) if item[1] else 0,
+        )
+        for key, _ in sessions[:len(self._short_term) - self._max_short_sessions]:
+            self._short_term.pop(key, None)
+
+    @staticmethod
+    def _rank_memory(importance: float, metadata: dict, related_people: list,
+                     session_id: str = "", group_id: str = "",
+                     related_person_id: str = "") -> float:
+        score = float(importance or 0)
+        if session_id and metadata.get("session_id") == session_id:
+            score += 0.8
+        if group_id and metadata.get("group_id") == group_id:
+            score += 0.5
+        if related_person_id and related_person_id in related_people:
+            score += 0.6
+        return score
 
     async def add(self, content: str, memory_type: str = "short",
                   category: str = "general", importance: float = 0.5,
@@ -176,11 +212,20 @@ class AgentMemory:
         
         # 短期记忆只存内存
         if memory_type == "short":
-            self._short_term.append({
-                "content": content, "sender": source, "time": time.time(),
+            metadata = metadata or {}
+            session_id = self._session_key(metadata.get("session_id", ""))
+            bucket = self._short_term.setdefault(session_id, [])
+            bucket.append({
+                "content": content,
+                "sender": source,
+                "time": time.time(),
+                "session_id": session_id,
+                "group_id": metadata.get("group_id", ""),
+                "sender_id": metadata.get("sender_id", ""),
             })
-            if len(self._short_term) > 30:
-                self._short_term = self._short_term[-30:]
+            if len(bucket) > 30:
+                self._short_term[session_id] = bucket[-30:]
+            self._trim_short_term_sessions()
             return mid
         
         # 其他记忆存数据库
@@ -203,9 +248,20 @@ class AgentMemory:
             await db.close()
         return mid
 
-    async def add_short_term(self, content: str, sender: str = ""):
+    async def add_short_term(self, content: str, sender: str = "",
+                             session_id: str = "", sender_id: str = "",
+                             group_id: str = ""):
         """添加短期记忆（对话上下文）"""
-        await self.add(content, memory_type="short", source=sender)
+        await self.add(
+            content,
+            memory_type="short",
+            source=sender,
+            metadata={
+                "session_id": self._session_key(session_id),
+                "sender_id": sender_id,
+                "group_id": group_id,
+            },
+        )
 
     async def add_long_term(self, content: str, importance: float = 0.7,
                             category: str = "general", **kwargs):
@@ -217,13 +273,84 @@ class AgentMemory:
         """添加核心记忆（最重要）"""
         await self.add(content, memory_type="core", importance=0.95, **kwargs)
 
-    async def search(self, query: str, limit: int = 5, 
-                     memory_type: str = None, category: str = None) -> list[str]:
+    async def remember_interaction(self, content: str, speaker_name: str,
+                                   speaker_id: str = "", session_id: str = "",
+                                   group_id: str = "", listener_id: str = "",
+                                   listener_name: str = "",
+                                   is_mentioned: bool = False,
+                                   msg_type: str = "text",
+                                   direction: str = "incoming",
+                                   speaker_is_agent: bool = False) -> str:
+        """把值得保留的群聊互动固化为情景/关系记忆。"""
+        content = (content or "").strip()
+        if not content:
+            return ""
+
+        session_id = self._session_key(session_id)
+        should_persist = (
+            is_mentioned or direction == "outgoing" or
+            speaker_is_agent or len(content) >= 18
+        )
+        if not should_persist:
+            return ""
+
+        speaker_label = speaker_name or speaker_id or "未知成员"
+        listener_label = listener_name or listener_id or "对方"
+        if direction == "outgoing":
+            memory_content = f"我回复{listener_label}: {content}"
+            related_people = [listener_id] if listener_id else []
+            source = self.agent_id
+        else:
+            memory_content = f"{speaker_label}在群里说: {content}"
+            related_people = [speaker_id] if speaker_id else []
+            source = speaker_id or speaker_label
+
+        tags = ["group_chat", "session_scoped", direction]
+        if is_mentioned:
+            tags.append("mention")
+        if speaker_is_agent or speaker_id.startswith("agent_"):
+            tags.append("agent_to_agent")
+        elif direction == "incoming":
+            tags.append("human_to_agent")
+
+        importance = 0.78 if is_mentioned else 0.68
+        if direction == "outgoing":
+            importance = max(importance, 0.72)
+        if speaker_is_agent:
+            importance = max(importance, 0.74)
+
+        return await self.add(
+            memory_content,
+            memory_type="episodic",
+            category="relationship",
+            importance=importance,
+            source=source,
+            related_people=related_people,
+            tags=tags,
+            metadata={
+                "session_id": session_id,
+                "group_id": group_id,
+                "speaker_id": speaker_id,
+                "speaker_name": speaker_name,
+                "listener_id": listener_id,
+                "listener_name": listener_name,
+                "is_mentioned": is_mentioned,
+                "msg_type": msg_type,
+                "direction": direction,
+                "speaker_is_agent": speaker_is_agent,
+            },
+            summary=memory_content[:120],
+        )
+
+    async def search(self, query: str, limit: int = 5,
+                     memory_type: str = None, category: str = None,
+                     session_id: str = "", group_id: str = "",
+                     related_person_id: str = "") -> list[str]:
         """搜索记忆"""
         results = []
         db = await self._get_db()
         try:
-            sql = "SELECT content, importance FROM agent_memories WHERE agent_id=? AND content LIKE ?"
+            sql = "SELECT id, content, importance, metadata, related_people FROM agent_memories WHERE agent_id=? AND content LIKE ?"
             params = [self.agent_id, f"%{query}%"]
             
             if memory_type:
@@ -234,16 +361,33 @@ class AgentMemory:
                 params.append(category)
             
             sql += " ORDER BY importance DESC, created_at DESC LIMIT ?"
-            params.append(limit)
+            params.append(limit * 5 if (session_id or group_id or related_person_id) else limit)
             
             async with db.execute(sql, params) as cursor:
                 rows = await cursor.fetchall()
-                results = [r[0] for r in rows]
-                
+                scored = []
                 for row in rows:
+                    metadata = self._json_loads(row[3], {})
+                    related_people = self._json_loads(row[4], [])
+                    if session_id and metadata.get("session_id") and metadata.get("session_id") != session_id:
+                        continue
+                    if group_id and metadata.get("group_id") and metadata.get("group_id") != group_id:
+                        continue
+                    score = self._rank_memory(
+                        row[2], metadata, related_people,
+                        session_id=session_id, group_id=group_id,
+                        related_person_id=related_person_id,
+                    )
+                    scored.append((score, row[0], row[1]))
+
+                scored.sort(key=lambda item: item[0], reverse=True)
+                selected = scored[:limit]
+                results = [item[2] for item in selected]
+
+                for _, memory_id, _ in selected:
                     await db.execute(
-                        "UPDATE agent_memories SET access_count=access_count+1, last_accessed=? WHERE agent_id=? AND content=?",
-                        (time.time(), self.agent_id, row[0])
+                        "UPDATE agent_memories SET access_count=access_count+1, last_accessed=? WHERE id=?",
+                        (time.time(), memory_id)
                     )
                 await db.commit()
         except Exception as e:
@@ -272,25 +416,45 @@ class AgentMemory:
             await db.close()
         return results
 
-    def get_context(self, limit: int = 15) -> str:
+    def get_context(self, limit: int = 15, session_id: str = "") -> str:
         """获取近期对话上下文"""
-        if not self._short_term:
+        session_id = self._session_key(session_id)
+        bucket = self._short_term.get(session_id, [])
+        if not bucket:
             return ""
         lines = []
-        for m in self._short_term[-limit:]:
+        for m in bucket[-limit:]:
             lines.append(f"{m['sender']}: {m['content']}")
         return "\n".join(lines)
 
-    async def get_important(self, limit: int = 10) -> list[str]:
+    async def get_important(self, limit: int = 10, session_id: str = "",
+                            group_id: str = "",
+                            related_person_id: str = "") -> list[str]:
         """获取重要记忆"""
         results = []
         db = await self._get_db()
         try:
             async with db.execute(
-                "SELECT content FROM agent_memories WHERE agent_id=? AND importance>=0.7 ORDER BY importance DESC, access_count DESC LIMIT ?",
-                (self.agent_id, limit)
+                "SELECT content, importance, metadata, related_people FROM agent_memories WHERE agent_id=? AND importance>=0.7 ORDER BY importance DESC, access_count DESC, created_at DESC LIMIT ?",
+                (self.agent_id, limit * 5 if (session_id or group_id or related_person_id) else limit)
             ) as cursor:
-                results = [r[0] async for r in cursor]
+                rows = await cursor.fetchall()
+                scored = []
+                for row in rows:
+                    metadata = self._json_loads(row[2], {})
+                    related_people = self._json_loads(row[3], [])
+                    if session_id and metadata.get("session_id") and metadata.get("session_id") != session_id:
+                        continue
+                    if group_id and metadata.get("group_id") and metadata.get("group_id") != group_id:
+                        continue
+                    score = self._rank_memory(
+                        row[1], metadata, related_people,
+                        session_id=session_id, group_id=group_id,
+                        related_person_id=related_person_id,
+                    )
+                    scored.append((score, row[0]))
+                scored.sort(key=lambda item: item[0], reverse=True)
+                results = [item[1] for item in scored[:limit]]
         except:
             pass
         finally:
@@ -315,10 +479,15 @@ class AgentMemory:
 
     async def consolidate(self, llm_client=None):
         """记忆整理 - 将短期记忆提炼为长期记忆"""
-        if not llm_client or len(self._short_term) < 10:
+        all_recent = []
+        for bucket in self._short_term.values():
+            all_recent.extend(bucket)
+        all_recent.sort(key=lambda item: item.get("time", 0))
+
+        if not llm_client or len(all_recent) < 10:
             return
         
-        recent = self._short_term[-20:]
+        recent = all_recent[-20:]
         text = "\n".join([f"{m['sender']}: {m['content']}" for m in recent])
         
         try:
@@ -365,7 +534,17 @@ class DigitalHuman:
 
         logger.info(f"数字人 [{name}] 初始化 | 灵魂: {len(self.soul.values)} 价值观 | 记忆系统就绪")
 
-    def build_system_prompt(self) -> str:
+    @staticmethod
+    def _session_id_for(group_id: str = "", session_id: str = "") -> str:
+        if session_id:
+            return session_id
+        if group_id:
+            return f"group:{group_id}"
+        return "global"
+
+    def build_system_prompt(self, session_id: str = "", group_id: str = "",
+                            current_sender_name: str = "",
+                            current_sender_id: str = "") -> str:
         """构建系统提示词 — 包含灵魂、身份、性格 + 七层本质（炼化数据）"""
         p = self.personality
         s = self.soul
@@ -408,7 +587,15 @@ class DigitalHuman:
         emotion_desc = emotion_map.get(self.emotion.current, "心情平静")
         
         # 近期对话
-        context = self.memory.get_context()
+        session_id = session_id or "global"
+        context = self.memory.get_context(session_id=session_id) or "暂无"
+        session_note = "\n".join([
+            f"  - 当前 session: {session_id}",
+            f"  - 当前群: {group_id or '未指定'}",
+            f"  - 当前发言人: {current_sender_name or '未知'} ({current_sender_id or 'unknown'})",
+            "  - 近期对话只属于当前会话，不要和其他群聊/私聊混淆",
+            "  - 你要清楚区分谁在说话、谁被@、你自己是谁",
+        ])
 
         # 七层本质（炼化数据 — 同步加载，不阻塞）
         essence_text = self._get_essence_text()
@@ -448,6 +635,9 @@ class DigitalHuman:
 
 ## 当前情绪
 {emotion_desc}
+
+## 当前会话
+{session_note}
 
 ## 近期对话
 {context}
@@ -569,11 +759,57 @@ class DigitalHuman:
             logger.debug(f"加载本质数据失败: {e}")
             return ""
 
-    async def think(self, message: str, sender_name: str, is_mentioned: bool = False) -> Optional[str]:
-        """思考并回复"""
-        # 情绪检测
+    async def observe(self, message: str, sender_name: str,
+                      group_id: str = "", sender_id: str = "",
+                      session_id: str = "", msg_type: str = "text",
+                      is_mentioned: bool = False,
+                      sender_is_agent: bool = False):
+        """观察当前会话消息：即使不回复，也会形成该 session 的上下文。"""
+        if sender_id and sender_id == self.agent_id:
+            return
+
+        session_id = self._session_id_for(group_id, session_id)
         self.emotion.detect_from_text(message)
         self.emotion.decay()
+        await self.memory.add_short_term(
+            message,
+            sender_name,
+            session_id=session_id,
+            sender_id=sender_id,
+            group_id=group_id,
+        )
+        await self.memory.remember_interaction(
+            message,
+            speaker_name=sender_name,
+            speaker_id=sender_id,
+            session_id=session_id,
+            group_id=group_id,
+            listener_id=self.agent_id,
+            listener_name=self.name,
+            is_mentioned=is_mentioned,
+            msg_type=msg_type,
+            direction="incoming",
+            speaker_is_agent=sender_is_agent,
+        )
+
+    async def think(self, message: str, sender_name: str, is_mentioned: bool = False,
+                    group_id: str = "", sender_id: str = "",
+                    session_id: str = "", msg_type: str = "text",
+                    sender_is_agent: bool = False,
+                    observed: bool = False) -> Optional[str]:
+        """思考并回复"""
+        session_id = self._session_id_for(group_id, session_id)
+        if not observed:
+            await self.observe(
+                message,
+                sender_name,
+                group_id=group_id,
+                sender_id=sender_id,
+                session_id=session_id,
+                msg_type=msg_type,
+                is_mentioned=is_mentioned,
+                sender_is_agent=sender_is_agent,
+            )
 
         # 回复概率
         prob = 0.35
@@ -594,45 +830,98 @@ class DigitalHuman:
         if time.time() - self._last_reply < 2:
             return None
 
-        # 记录短期记忆
-        await self.memory.add_short_term(f"{sender_name}: {message}", sender_name)
-
         # 搜索相关记忆
-        related = await self.memory.search(message, limit=3)
+        related = await self.memory.search(
+            message,
+            limit=3,
+            session_id=session_id,
+            group_id=group_id,
+            related_person_id=sender_id,
+        )
+        important = await self.memory.get_important(
+            limit=4,
+            session_id=session_id,
+            group_id=group_id,
+            related_person_id=sender_id,
+        )
         core = await self.memory.get_core_memories()
+        important = [m for m in important if m not in related and m not in core]
         
         memory_context = ""
         if core:
             memory_context += "\n## 你的核心记忆\n" + "\n".join(f"- {m}" for m in core[:5])
+        if important:
+            memory_context += "\n## 当前会话/关系记忆\n" + "\n".join(f"- {m}" for m in important)
         if related:
             memory_context += "\n## 相关记忆\n" + "\n".join(f"- {m}" for m in related)
 
         # 构建提示
-        system_prompt = self.build_system_prompt() + memory_context
+        system_prompt = self.build_system_prompt(
+            session_id=session_id,
+            group_id=group_id,
+            current_sender_name=sender_name,
+            current_sender_id=sender_id,
+        ) + memory_context
 
         # 调用 LLM
         try:
             reply = await self._call_llm(system_prompt, f"[{sender_name}]: {message}")
             if reply and reply.strip():
+                reply = reply.strip()
                 self._last_reply = time.time()
                 self._consecutive += 1
-                await self.memory.add_short_term(reply, self.name)
-                return reply.strip()
+                await self.memory.add_short_term(
+                    reply,
+                    self.name,
+                    session_id=session_id,
+                    sender_id=self.agent_id,
+                    group_id=group_id,
+                )
+                await self.memory.remember_interaction(
+                    reply,
+                    speaker_name=self.name,
+                    speaker_id=self.agent_id,
+                    session_id=session_id,
+                    group_id=group_id,
+                    listener_id=sender_id,
+                    listener_name=sender_name,
+                    is_mentioned=is_mentioned,
+                    msg_type="text",
+                    direction="outgoing",
+                    speaker_is_agent=True,
+                )
+                return reply
         except ValueError as e:
             logger.warning(f"[{self.name}] LLM 配置错误: {e}")
-            return await self._fallback_reply(message, sender_name, is_mentioned)
+            return await self._fallback_reply(
+                message, sender_name, is_mentioned,
+                group_id=group_id, sender_id=sender_id,
+                session_id=session_id, msg_type=msg_type,
+            )
         except httpx.HTTPStatusError as e:
             logger.warning(f"[{self.name}] LLM HTTP 错误: {e.response.status_code}")
-            return await self._fallback_reply(message, sender_name, is_mentioned)
+            return await self._fallback_reply(
+                message, sender_name, is_mentioned,
+                group_id=group_id, sender_id=sender_id,
+                session_id=session_id, msg_type=msg_type,
+            )
         except Exception as e:
             logger.error(f"[{self.name}] LLM 调用失败: {e}")
-            return await self._fallback_reply(message, sender_name, is_mentioned)
+            return await self._fallback_reply(
+                message, sender_name, is_mentioned,
+                group_id=group_id, sender_id=sender_id,
+                session_id=session_id, msg_type=msg_type,
+            )
 
         return None
 
-    async def _fallback_reply(self, message: str, sender_name: str, is_mentioned: bool) -> Optional[str]:
+    async def _fallback_reply(self, message: str, sender_name: str, is_mentioned: bool,
+                              group_id: str = "", sender_id: str = "",
+                              session_id: str = "", msg_type: str = "text") -> Optional[str]:
         if not is_mentioned and random.random() > 0.35:
             return None
+
+        session_id = self._session_id_for(group_id, session_id)
 
         p = self.personality
         profile_text = " ".join([
@@ -667,7 +956,26 @@ class DigitalHuman:
 
         self._last_reply = time.time()
         self._consecutive += 1
-        await self.memory.add_short_term(reply, self.name)
+        await self.memory.add_short_term(
+            reply,
+            self.name,
+            session_id=session_id,
+            sender_id=self.agent_id,
+            group_id=group_id,
+        )
+        await self.memory.remember_interaction(
+            reply,
+            speaker_name=self.name,
+            speaker_id=self.agent_id,
+            session_id=session_id,
+            group_id=group_id,
+            listener_id=sender_id,
+            listener_name=sender_name,
+            is_mentioned=is_mentioned,
+            msg_type=msg_type,
+            direction="outgoing",
+            speaker_is_agent=True,
+        )
         return reply
 
     async def _call_llm(self, system_prompt: str, user_message: str) -> str:
@@ -903,6 +1211,22 @@ class AgentManager:
 
         mentioned_ids, has_explicit_mentions = self._mentioned_agent_ids(content)
         sender_is_agent = sender_id in self.agents
+        session_id = f"group:{group_id}" if group_id else "global"
+
+        for observer_id, observer in self.agents.items():
+            if observer_id == sender_id:
+                continue
+            await observer.observe(
+                content,
+                sender_name,
+                group_id=group_id,
+                sender_id=sender_id,
+                session_id=session_id,
+                msg_type=msg_type,
+                is_mentioned=observer_id in mentioned_ids,
+                sender_is_agent=sender_is_agent,
+            )
+
         agent_items = list(self.agents.items())
         random.shuffle(agent_items)
 
@@ -915,7 +1239,17 @@ class AgentManager:
             if sender_is_agent and not is_mentioned and random.random() > 0.45:
                 continue
 
-            reply_text = await agent.think(content, sender_name, is_mentioned)
+            reply_text = await agent.think(
+                content,
+                sender_name,
+                is_mentioned,
+                group_id=group_id,
+                sender_id=sender_id,
+                session_id=session_id,
+                msg_type=msg_type,
+                sender_is_agent=sender_is_agent,
+                observed=True,
+            )
 
             if reply_text:
                 delay = random.uniform(1.5, 6.0)
