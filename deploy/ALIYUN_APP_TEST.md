@@ -197,7 +197,7 @@ adb shell monkey -p com.grantclaw.familychat -c android.intent.category.LAUNCHER
 
 ## 8. 常见问题
 
-- APP 提示网络失败：确认模拟器能打开 `https://你的域名/api/status`，并检查 ECS 安全组和 Nginx。
+- APP 提示网络失败：先确认后端 `https://grantclaw.com/family-chat/api/status` 正常；如果只在 Android 模拟器失败，通常是模拟器 DNS 问题。重启模拟器时指定 DNS：`emulator -avd FamilyChat_x86_4KB -dns-server 223.5.5.5,8.8.8.8`，再用 `adb shell ping -c 1 grantclaw.com` 确认域名能解析。
 - WebSocket 断开：确认 Nginx `/ws` 配置存在，并且证书域名正确。
 - 500 错误：查看 `journalctl -u familychat -n 100 --no-pager`。
 - AI 不回复：确认 `.env` 里 `LLM_API_KEY`、`LLM_PROVIDER`、`LLM_MODEL` 已配置。
