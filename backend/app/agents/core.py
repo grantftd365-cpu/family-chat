@@ -1520,6 +1520,27 @@ class AgentManager:
     def get_agent(self, agent_id: str) -> Optional[DigitalHuman]:
         return self.agents.get(agent_id)
 
+    async def delete_agent(self, agent_id: str) -> bool:
+        """删除数字人配置和关联学习数据，历史消息保留。"""
+        if agent_id not in self.agents:
+            return False
+        db = await self._get_db()
+        try:
+            await db.execute("DELETE FROM group_members WHERE user_id=?", (agent_id,))
+            await db.execute("DELETE FROM agent_memories WHERE agent_id=?", (agent_id,))
+            await db.execute("DELETE FROM agent_relationship_profiles WHERE agent_id=?", (agent_id,))
+            await db.execute("DELETE FROM agent_growth_events WHERE agent_id=?", (agent_id,))
+            await db.execute("DELETE FROM agent_voice_map WHERE agent_id=?", (agent_id,))
+            await db.execute("DELETE FROM human_essence WHERE agent_id=?", (agent_id,))
+            await db.execute("DELETE FROM refinement_sessions WHERE agent_id=?", (agent_id,))
+            await db.execute("DELETE FROM refinement_logs WHERE agent_id=?", (agent_id,))
+            await db.execute("DELETE FROM agents WHERE id=?", (agent_id,))
+            await db.commit()
+            self.agents.pop(agent_id, None)
+            return True
+        finally:
+            await db.close()
+
     def get_all(self) -> list[dict]:
         return [
             {

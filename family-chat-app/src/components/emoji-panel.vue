@@ -88,6 +88,10 @@
         <text class="tab-icon">🐱</text>
         <text class="tab-label">表情包</text>
       </view>
+      <view class="tab-item delete" @tap="emit('delete')">
+        <text class="tab-icon">⌫</text>
+        <text class="tab-label">删除</text>
+      </view>
     </view>
   </view>
 </template>
@@ -95,7 +99,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 
-const emit = defineEmits(['select'])
+const emit = defineEmits(['select', 'delete'])
 
 const activeTab = ref('emoji')
 const recentEmojis = ref([])
@@ -163,7 +167,8 @@ function loadCustomPacks() {
   try {
     const stored = uni.getStorageSync('emoji_custom_packs')
     if (stored) {
-      customPacks.value = JSON.parse(stored)
+      const parsed = JSON.parse(stored)
+      customPacks.value = Array.isArray(parsed) ? parsed : []
     }
   } catch (e) {
     customPacks.value = []
@@ -182,8 +187,8 @@ function onSelectCustom(item) {
 
 <style lang="scss" scoped>
 .emoji-panel {
-  background: var(--card-bg);
-  border-top: 1rpx solid var(--border-color);
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  border-top: 1rpx solid rgba(234,236,240,0.9);
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -191,7 +196,7 @@ function onSelectCustom(item) {
 
 .emoji-scroll {
   flex: 1;
-  padding: 16rpx;
+  padding: 18rpx 20rpx;
   overflow-y: auto;
 }
 
@@ -201,29 +206,32 @@ function onSelectCustom(item) {
 
 .section-title {
   font-size: $font-xs;
-  color: var(--text-secondary);
-  padding: 8rpx 4rpx;
+  color: #667085;
+  font-weight: 700;
+  padding: 8rpx 4rpx 12rpx;
   display: block;
 }
 
 .emoji-grid {
   display: flex;
   flex-wrap: wrap;
-  gap: 4rpx;
+  gap: 8rpx;
 }
 
 .emoji-item {
-  width: 72rpx;
-  height: 72rpx;
+  width: 80rpx;
+  height: 80rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 40rpx;
-  border-radius: 8rpx;
-  transition: background 0.15s;
+  font-size: 44rpx;
+  border-radius: 22rpx;
+  background: rgba(255,255,255,0.72);
+  transition: transform 0.15s, background 0.15s;
 
   &:active {
-    background: var(--bg-color);
+    transform: scale(1.12);
+    background: #eef4ff;
   }
 }
 
@@ -267,8 +275,8 @@ function onSelectCustom(item) {
 /* 底部 Tab */
 .emoji-tabs {
   display: flex;
-  border-top: 1rpx solid var(--border-color);
-  background: var(--card-bg);
+  border-top: 1rpx solid #eaecf0;
+  background: #ffffff;
   flex-shrink: 0;
 }
 
@@ -282,7 +290,11 @@ function onSelectCustom(item) {
   transition: background 0.2s;
 
   &.active {
-    background: var(--bg-color);
+    background: #eef4ff;
+  }
+
+  &.delete {
+    color: #ff4d67;
   }
 
   &:active {
@@ -297,6 +309,6 @@ function onSelectCustom(item) {
 
 .tab-label {
   font-size: 18rpx;
-  color: var(--text-secondary);
+  color: #667085;
 }
 </style>

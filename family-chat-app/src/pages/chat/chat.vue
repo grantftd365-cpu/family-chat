@@ -74,7 +74,7 @@
     <scroll-view
       scroll-y
       :scroll-into-view="scrollTarget"
-      :scroll-with-animation="true"
+      :scroll-with-animation="shouldAnimateScroll"
       class="message-area"
       :style="{ height: msgAreaHeight + 'px' }"
       @scrolltoupper="onScrollToUpper"
@@ -126,13 +126,13 @@
             :class="{ 'avatar-self': msg.sender_id === currentUserId }"
           >
             <image
-              v-if="msg.sender_avatar"
-              :src="msg.sender_avatar"
+              v-if="isImageAvatar(msg.sender_avatar || msg.sender_avatar_url)"
+              :src="msg.sender_avatar_url || msg.sender_avatar"
               class="avatar-img"
               mode="aspectFill"
             />
             <view v-else class="avatar-placeholder">
-              <text>{{ (msg.sender_name || '?')[0] }}</text>
+              <text>{{ avatarText(msg) }}</text>
             </view>
           </view>
 
@@ -466,6 +466,7 @@ const searchResults = ref([])
 const searching = ref(false)
 const highlightMsgId = ref(null)
 const SEARCH_RESULT_LIMIT = 200
+const MAX_RENDERED_MESSAGES = 160
 const reactingMsgId = ref(null) // 防并发锁
 const groupMembers = ref([])
 
@@ -485,7 +486,11 @@ const mentionableMembers = computed(() => {
 
 // 过滤消息（搜索模式下只显示匹配的）
 const filteredMessages = computed(() => {
-  if (!showSearch.value || !searchKeyword.value.trim()) return messages.value
+  if (!showSearch.value || !searchKeyword.value.trim()) {
+    return messages.value.length > MAX_RENDERED_MESSAGES
+      ? messages.value.slice(-MAX_RENDERED_MESSAGES)
+      : messages.value
+  }
   const kw = searchKeyword.value.trim().toLowerCase()
   const result = messages.value.filter(m => {
     if (!m.content) return false
@@ -493,6 +498,7 @@ const filteredMessages = computed(() => {
   })
   return result.slice(0, SEARCH_RESULT_LIMIT)
 })
+const shouldAnimateScroll = computed(() => filteredMessages.value.length < 80)
 const unreadTotal = computed(() => {
   let total = 0
   for (const key in chatStore.unreadMap) {
@@ -507,8 +513,7 @@ onLoad((options) => {
 
   const sysInfo = uni.getSystemInfoSync()
   statusBarHeight.value = sysInfo.statusBarHeight || 44
-  const navH = statusBarHeight.value + 44
-  msgAreaHeight.value = sysInfo.windowHeight - navH - 120
+  recalcLayout()
 
   chatStore.currentGroupId = groupId.value
 
@@ -535,6 +540,11 @@ onLoad((options) => {
 
   // 初始化录音
   initRecorder()
+})
+
+watch([showEmoji, showMore, showMentionPanel, voiceMode, showAnnouncement], () => {
+  recalcLayout()
+  nextTick(scrollToBottom)
 })
 
 onUnload(() => {
@@ -590,6 +600,22 @@ function loadAnnouncement() {
   if (group && group.announcement) {
     announcement.value = group.announcement
   }
+  recalcLayout()
+}
+
+function recalcLayout() {
+  const sysInfo = uni.getSystemInfoSync()
+  const windowWidth = sysInfo.windowWidth || 375
+  const rpx = windowWidth / 750
+  const navHeight = (statusBarHeight.value || 44) + 44
+  const inputBaseHeight = voiceMode.value ? 62 : 72
+  const panelHeight = (showEmoji.value || showMore.value) ? 420 * rpx : 0
+  const mentionHeight = showMentionPanel.value ? 150 * rpx : 0
+  const announcementHeight = announcement.value && showAnnouncement.value ? 42 : 0
+  msgAreaHeight.value = Math.max(
+    220,
+    sysInfo.windowHeight - navHeight - inputBaseHeight - panelHeight - mentionHeight - announcementHeight
+  )
 }
 
 async function onRefresh() {
@@ -758,8 +784,19 @@ function onEmojiSelect(emoji) {
 }
 
 function onEmojiDelete() {
-  // 删除最后一个字符（考虑 emoji 可能是多字节）
-  inputText.value = inputText.value.slice(0, -1)
+  const chars = Array.from(inputText.value)
+  chars.pop()
+  inputText.value = chars.join('')
+}
+
+function isImageAvatar(value) {
+  return /^(https?:|data:|file:|blob:|\/)/i.test(String(value || ''))
+}
+
+function avatarText(msg) {
+  const avatar = msg.sender_avatar || msg.agent_avatar || ''
+  if (avatar && !isImageAvatar(avatar) && Array.from(avatar).length <= 3) return avatar
+  return (msg.sender_name || '?').slice(0, 1)
 }
 
 // 切换语音模式
@@ -1112,7 +1149,7 @@ async function sendQuickReaction(msg, emoji) {
 // 是否显示时间
 function shouldShowTime(msg, index) {
   if (index === 0) return true
-  const prev = messages.value[index - 1]
+  const prev = filteredMessages.value[index - 1]
   if (!prev || !msg.created_at || !prev.created_at) return false
   return new Date(msg.created_at) - new Date(prev.created_at) > 300000 // 5分钟
 }
@@ -1269,16 +1306,17 @@ function reEditMessage(msg) {
 <style lang="scss" scoped>
 .chat-page {
   min-height: 100vh;
-  background: var(--chat-bg);
+  background: linear-gradient(180deg, #eef4ff 0%, #f7f8fb 34%, #f3f6f9 100%);
   display: flex;
   flex-direction: column;
 }
 
 .nav-bar {
-  background: $primary-color;
+  background: linear-gradient(135deg, #101828 0%, #1d2b53 52%, #00a3ff 140%);
   position: sticky;
   top: 0;
   z-index: 100;
+  box-shadow: 0 14rpx 40rpx rgba(16, 24, 40, 0.18);
 }
 
 .nav-content {
@@ -1347,6 +1385,9 @@ function reEditMessage(msg) {
   align-items: center;
   justify-content: center;
   font-size: 36rpx;
+  border-radius: 22rpx;
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
 
   &:active {
     opacity: 0.7;
@@ -1498,7 +1539,10 @@ function reEditMessage(msg) {
 
 .message-area {
   flex: 1;
-  background: var(--chat-bg);
+  background:
+    radial-gradient(circle at 20% 0%, rgba(0,163,255,0.10), transparent 28%),
+    radial-gradient(circle at 80% 18%, rgba(18,183,106,0.10), transparent 26%),
+    #f4f7fb;
 }
 
 .load-more {
@@ -1691,7 +1735,7 @@ function reEditMessage(msg) {
 
 .msg-bubble {
   padding: 20rpx 24rpx;
-  border-radius: $radius-base;
+  border-radius: 26rpx;
   position: relative;
   word-break: break-all;
   min-width: 80rpx;
@@ -1739,14 +1783,16 @@ function reEditMessage(msg) {
 }
 
 .bubble-self {
-  background: var(--bubble-self);
-  border-top-right-radius: 4rpx;
+  background: linear-gradient(135deg, #12b76a, #7ee787);
+  border-top-right-radius: 8rpx;
+  box-shadow: 0 10rpx 26rpx rgba(18, 183, 106, 0.18);
 }
 
 .bubble-other {
-  background: var(--bubble-other);
-  border-top-left-radius: 4rpx;
-  box-shadow: $shadow-sm;
+  background: rgba(255,255,255,0.94);
+  border: 1rpx solid rgba(255,255,255,0.72);
+  border-top-left-radius: 8rpx;
+  box-shadow: 0 12rpx 30rpx rgba(16, 24, 40, 0.08);
 }
 
 .msg-text {
@@ -1900,8 +1946,13 @@ function reEditMessage(msg) {
 
 /* 输入栏 */
 .input-bar {
-  background: var(--card-bg);
-  border-top: 1rpx solid var(--border-color);
+  margin: 0 18rpx 18rpx;
+  background: rgba(255,255,255,0.92);
+  border: 1rpx solid rgba(255,255,255,0.72);
+  border-radius: 32rpx;
+  box-shadow: 0 18rpx 46rpx rgba(16, 24, 40, 0.12);
+  overflow: hidden;
+  backdrop-filter: blur(18rpx);
 }
 
 .input-bar-inner {
@@ -1919,6 +1970,8 @@ function reEditMessage(msg) {
   justify-content: center;
   font-size: 40rpx;
   flex-shrink: 0;
+  border-radius: 22rpx;
+  background: #f2f4f7;
 
   &:active {
     opacity: 0.7;
@@ -1932,8 +1985,8 @@ function reEditMessage(msg) {
 
 .input-wrap {
   flex: 1;
-  background: var(--bg-color);
-  border-radius: $radius-base;
+  background: #f8fafc;
+  border-radius: 24rpx;
   padding: 12rpx 20rpx;
   min-height: 72rpx;
   display: flex;
@@ -1975,8 +2028,8 @@ function reEditMessage(msg) {
 .send-btn {
   padding: 0 24rpx;
   height: 64rpx;
-  background: $primary-color;
-  border-radius: $radius-base;
+  background: linear-gradient(135deg, #12b76a, #00a3ff);
+  border-radius: 22rpx;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2076,15 +2129,14 @@ function reEditMessage(msg) {
 }
 
 .panel-area {
-  height: 400rpx;
-  border-top: 1rpx solid var(--border-color);
+  border-top: 1rpx solid rgba(234,236,240,0.9);
   overflow: hidden;
   transition: height 0.3s ease, opacity 0.3s ease;
   opacity: 0;
   height: 0;
 
   &.panel-visible {
-    height: 400rpx;
+    height: 420rpx;
     opacity: 1;
   }
 }

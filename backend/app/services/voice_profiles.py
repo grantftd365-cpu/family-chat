@@ -10,7 +10,9 @@ import httpx
 
 # 音频存储目录
 VOICE_DIR = "data/voice_profiles"
+TTS_DIR = "data/voices"
 os.makedirs(VOICE_DIR, exist_ok=True)
+os.makedirs(TTS_DIR, exist_ok=True)
 
 # ElevenLabs 配置
 elevenlabs_base = "https://api.elevenlabs.io/v1"
@@ -486,7 +488,7 @@ class VoiceProfileManager:
         if not edge_voice_id:
             edge_voice_id = "zh-CN-XiaoxiaoNeural"
 
-        output_path = os.path.join(VOICE_DIR, f"tts_{uuid.uuid4().hex[:8]}.mp3")
+        output_path = os.path.join(TTS_DIR, f"tts_{uuid.uuid4().hex[:8]}.mp3")
 
         try:
             import edge_tts
@@ -509,7 +511,7 @@ class VoiceProfileManager:
         if not api_key:
             return ""
 
-        output_path = os.path.join(VOICE_DIR, f"el_{uuid.uuid4().hex[:8]}.mp3")
+        output_path = os.path.join(TTS_DIR, f"el_{uuid.uuid4().hex[:8]}.mp3")
 
         try:
             async with httpx.AsyncClient(timeout=60) as client:

@@ -37,11 +37,12 @@ class WsClient {
     if (!token) return ''
     // #ifdef H5
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-    return `${protocol}//${location.host}/ws?token=${token}`
+    const basePath = location.pathname.startsWith('/family-chat') ? '/family-chat' : ''
+    return `${protocol}//${location.host}${basePath}/ws?token=${encodeURIComponent(token)}`
     // #endif
     // #ifndef H5
     const wsUrl = toWebSocketUrl(getServerUrl())
-    return `${wsUrl}/ws?token=${token}`
+    return `${wsUrl}/ws?token=${encodeURIComponent(token)}`
     // #endif
   }
 

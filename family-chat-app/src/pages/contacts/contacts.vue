@@ -198,7 +198,7 @@ function goGroups() {
 }
 
 function goAgents() {
-  uni.showToast({ title: '数字人功能开发中', icon: 'none' })
+  uni.navigateTo({ url: '/pages/agents/manage' })
 }
 
 function goChat(friend) {

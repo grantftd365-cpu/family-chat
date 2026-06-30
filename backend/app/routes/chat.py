@@ -380,10 +380,10 @@ async def send_message(req: SendMessageReq, user=Depends(get_current_user)):
     from ..main import agent_manager
     db = await get_db()
     try:
-        async with db.execute("SELECT nickname,avatar FROM users WHERE id=?", (user["user_id"],)) as c:
+        async with db.execute("SELECT nickname,avatar,avatar_url FROM users WHERE id=?", (user["user_id"],)) as c:
             row = await c.fetchone()
             nickname = row[0] if row else user["username"]
-            avatar = row[1] if row else "😀"
+            avatar = (row[2] or row[1]) if row else "😀"
 
         # 检查是否被禁言
         async with db.execute(
@@ -438,7 +438,11 @@ async def send_message(req: SendMessageReq, user=Depends(get_current_user)):
             _handle_agent_replies(req.group_id, user["user_id"], nickname, req.content, req.msg_type)
         )
 
-        return {"id": msg_id, "created_at": ts}
+        return {
+            "id": msg_id,
+            "created_at": ts,
+            "message": msg_data["data"],
+        }
     finally:
         await db.close()
 

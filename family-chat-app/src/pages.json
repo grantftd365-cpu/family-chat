@@ -71,6 +71,13 @@
       }
     },
     {
+      "path": "pages/agents/manage",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "数字人管理"
+      }
+    },
+    {
       "path": "pages/refine/refine",
       "style": {
         "navigationStyle": "custom",

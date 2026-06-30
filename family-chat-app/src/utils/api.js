@@ -113,6 +113,26 @@ function getResponseErrorMessage(res, fallback = '请求失败') {
   return data?.detail || data?.message || data?.error || `${fallback}(${res.statusCode})`
 }
 
+function toAbsoluteMediaUrl(url) {
+  if (!url) return ''
+  if (/^(https?:|file:|data:|blob:)/i.test(url)) return url
+  const base = getServerUrl()
+  if (base) return base + url
+  // #ifdef H5
+  if (typeof window !== 'undefined' && window.location?.pathname?.startsWith('/family-chat')) {
+    return '/family-chat' + url
+  }
+  // #endif
+  return url
+}
+
+function formEncode(data) {
+  return Object.entries(data)
+    .filter(([, value]) => value !== undefined && value !== null)
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+    .join('&')
+}
+
 /** GET 请求 */
 function get(url, data = {}) {
   return request({ url, method: 'GET', data })
@@ -146,8 +166,8 @@ export function login(data) {
 }
 
 /** 微信登录 */
-export function wxLogin(code) {
-  return post('/api/wx-login', { code })
+export function wxLogin(code, profile = {}) {
+  return post('/api/wx-login', { code, ...profile })
 }
 
 /** 获取当前用户信息 */
@@ -327,6 +347,21 @@ export function getAgents() {
   return get('/api/agents')
 }
 
+/** 获取单个数字人 */
+export function getAgent(agentId) {
+  return get(`/api/agents/${agentId}`)
+}
+
+/** 更新数字人 */
+export function updateAgent(agentId, data) {
+  return put(`/api/agents/${agentId}`, data)
+}
+
+/** 删除数字人 */
+export function deleteAgent(agentId) {
+  return del(`/api/agents/${agentId}`)
+}
+
 /** 炼化文本 */
 export function refineText(data) {
   return post('/api/agents/refine/text', data)
@@ -463,24 +498,29 @@ export function getAvailableVoices() {
   return get('/api/voice-profiles/available')
 }
 
+/** 获取语音能力诊断 */
+export function getVoiceDiagnostics() {
+  return get('/api/voice-profiles/diagnostics')
+}
+
 /** 创建音色配置 */
 export function createVoiceProfile(name, edgeVoiceId, gender = '') {
   return post('/api/voice-profiles', { name, edge_voice_id: edgeVoiceId, gender })
 }
 
 /** 上传音频创建音色配置 */
-export function uploadVoiceProfile(name, filePath, gender = '') {
+export function uploadVoiceProfile(name, filePath, gender = '', voiceEngine = 'edge-tts') {
   return new Promise((resolve, reject) => {
     const token = getToken()
     uni.uploadFile({
       url: getServerUrl() + '/api/voice-profiles/upload',
       filePath,
       name: 'file',
-      formData: { name, gender },
+      formData: { name, gender, voice_engine: voiceEngine },
       header: token ? { Authorization: `Bearer ${token}` } : {},
       success: (res) => {
-        if (res.statusCode === 200) resolve(JSON.parse(res.data))
-        else reject(new Error('上传失败'))
+        if (res.statusCode === 200) resolve(parseResponseData(res.data))
+        else reject(new Error(getResponseErrorMessage(res, '上传失败')))
       },
       fail: (err) => reject(new Error(err.errMsg || '上传失败'))
     })
@@ -506,20 +546,36 @@ export function getAgentVoice(agentId) {
 export function synthesizeVoicePreview(text, edgeVoiceId = '', profileId = '') {
   return new Promise((resolve, reject) => {
     const token = getToken()
-    uni.uploadFile({
+    uni.request({
       url: getServerUrl() + '/api/voice-profiles/synthesize',
-      filePath: '',
-      name: 'file',
-      formData: { text, edge_voice_id: edgeVoiceId, profile_id: profileId },
-      header: token ? { Authorization: `Bearer ${token}` } : {},
+      method: 'POST',
+      data: formEncode({ text, edge_voice_id: edgeVoiceId, profile_id: profileId, as_url: true }),
+      header: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      },
       success: (res) => {
         if (res.statusCode === 200) {
+          const data = parseResponseData(res.data)
+          const src = toAbsoluteMediaUrl(data?.url)
+          if (!src) {
+            reject(new Error('预览地址为空'))
+            return
+          }
           const audio = uni.createInnerAudioContext()
-          audio.src = 'data:audio/mp3;base64,' + res.data
+          let settled = false
+          const settle = (ok, err) => {
+            if (settled) return
+            settled = true
+            ok ? resolve(audio) : reject(err || new Error('播放失败'))
+          }
+          audio.src = src
+          audio.onCanplay(() => settle(true))
+          audio.onEnded(() => audio.destroy())
+          audio.onError(() => { audio.destroy(); settle(false, new Error('播放失败')) })
           audio.play()
-          audio.onEnded(() => { audio.destroy(); resolve() })
-          audio.onError(() => { audio.destroy(); reject(new Error('播放失败')) })
-        } else reject(new Error('合成失败'))
+          setTimeout(() => settle(true), 800)
+        } else reject(new Error(getResponseErrorMessage(res, '合成失败')))
       },
       fail: (err) => reject(new Error(err.errMsg || '合成失败'))
     })
@@ -666,6 +722,9 @@ export default {
   deleteMessage,
   getUserOnline,
   getAgents,
+  getAgent,
+  updateAgent,
+  deleteAgent,
   refineText,
   getFriends,
   getFriendRequests,
@@ -684,6 +743,7 @@ export default {
   uploadVoice,
   getVoiceProfiles,
   getAvailableVoices,
+  getVoiceDiagnostics,
   createVoiceProfile,
   uploadVoiceProfile,
   deleteVoiceProfile,

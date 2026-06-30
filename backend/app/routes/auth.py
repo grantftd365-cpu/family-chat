@@ -90,7 +90,7 @@ async def login(req: LoginReq):
     db = await get_db()
     try:
         async with db.execute(
-            "SELECT id,username,nickname,avatar,agent_id,password_hash,signature FROM users WHERE email=?",
+            "SELECT id,username,nickname,avatar,agent_id,password_hash,signature,avatar_url FROM users WHERE email=?",
             (req.email,)
         ) as c:
             row = await c.fetchone()
@@ -106,7 +106,8 @@ async def login(req: LoginReq):
             "token": token,
             "user": {"id": row[0], "email": req.email, "username": row[1],
                      "nickname": row[2], "avatar": row[3] or "😀",
-                     "agent_id": row[4] or "", "signature": row[6] or ""},
+                     "agent_id": row[4] or "", "signature": row[6] or "",
+                     "avatar_url": row[7] or ""},
         }
     finally:
         await db.close()
@@ -117,7 +118,7 @@ async def get_me(user=Depends(get_current_user)):
     db = await get_db()
     try:
         async with db.execute(
-            "SELECT id,username,nickname,avatar,agent_id,signature,gender,region,email FROM users WHERE id=?",
+            "SELECT id,username,nickname,avatar,agent_id,signature,gender,region,email,avatar_url FROM users WHERE id=?",
             (user["user_id"],)
         ) as c:
             row = await c.fetchone()
@@ -128,6 +129,7 @@ async def get_me(user=Depends(get_current_user)):
                 "avatar": row[3] or "😀", "agent_id": row[4] or "",
                 "signature": row[5] or "", "gender": row[6] or "",
                 "region": row[7] or "", "email": row[8],
+                "avatar_url": row[9] or "",
             }
     finally:
         await db.close()
@@ -203,6 +205,47 @@ class WxLoginReq(BaseModel):
     code: str
     nickname: str = ""
     avatar: str = ""
+    gender: int = 0
+    province: str = ""
+    city: str = ""
+    country: str = ""
+    language: str = "zh_CN"
+    encrypted_data: str = ""
+    iv: str = ""
+    raw_data: str = ""
+    signature: str = ""
+
+
+def _gender_text(value: int) -> str:
+    return "男" if value == 1 else "女" if value == 2 else ""
+
+
+def _region_text(profile: dict) -> str:
+    return f"{profile.get('province', '')} {profile.get('city', '')}".strip()
+
+
+def _wx_profile_from_req(req: WxLoginReq) -> dict:
+    return {
+        "nickname": req.nickname.strip(),
+        "avatar": req.avatar.strip(),
+        "gender": req.gender,
+        "province": req.province.strip(),
+        "city": req.city.strip(),
+        "country": req.country.strip(),
+        "language": req.language or "zh_CN",
+    }
+
+
+async def _refine_wechat_profile(agent_id: str, profile: dict):
+    meaningful = [profile.get("nickname"), profile.get("avatar"), profile.get("province"), profile.get("city")]
+    if not agent_id or not any(meaningful):
+        return
+    try:
+        from ..main import refinement_service
+        if refinement_service:
+            await refinement_service.refine_from_wechat_profile(agent_id, profile)
+    except Exception as e:
+        logger.debug(f"微信资料炼化跳过: {e}")
 
 
 @router.post("/wx-login")
@@ -242,11 +285,13 @@ async def wx_login(req: WxLoginReq):
 
     unionid = data.get("unionid", "")
 
+    wx_profile = _wx_profile_from_req(req)
+
     # 2. 查找或创建用户
     db = await get_db()
     try:
         async with db.execute(
-            "SELECT id, username, nickname, avatar, agent_id FROM users WHERE wx_openid=?",
+            "SELECT id, username, nickname, avatar, agent_id, avatar_url FROM users WHERE wx_openid=?",
             (openid,)
         ) as c:
             row = await c.fetchone()
@@ -254,33 +299,59 @@ async def wx_login(req: WxLoginReq):
         if row:
             # 已有用户，直接登录
             user_id = row[0]
+            nickname = wx_profile.get("nickname") or row[2]
+            avatar_url = wx_profile.get("avatar") or row[5] or ""
+            gender = _gender_text(wx_profile.get("gender", 0))
+            region = _region_text(wx_profile)
+            update_fields = ["online_status='online'", "last_seen=?"]
+            update_params = [now()]
+            if wx_profile.get("nickname"):
+                update_fields.append("nickname=?")
+                update_params.append(nickname)
+            if avatar_url:
+                update_fields.append("avatar_url=?")
+                update_params.append(avatar_url)
+            if gender:
+                update_fields.append("gender=?")
+                update_params.append(gender)
+            if region:
+                update_fields.append("region=?")
+                update_params.append(region)
+            update_fields.append("updated_at=?")
+            update_params.append(now())
+            update_params.append(user_id)
             await db.execute(
-                "UPDATE users SET online_status='online', last_seen=? WHERE id=?",
-                (now(), user_id)
+                f"UPDATE users SET {','.join(update_fields)} WHERE id=?",
+                update_params
             )
             await db.commit()
+            await _refine_wechat_profile(row[4], wx_profile)
             token = create_token(user_id, row[1])
             return {
                 "token": token,
                 "user": {
-                    "id": user_id, "username": row[1], "nickname": row[2],
-                    "avatar": row[3] or "😀", "agent_id": row[4] or "",
-                    "is_new": False,
+                    "id": user_id, "username": row[1], "nickname": nickname,
+                    "avatar": row[3] or "😀", "avatar_url": avatar_url,
+                    "agent_id": row[4] or "", "is_new": False,
+                    "wx_profile": wx_profile,
                 },
             }
 
         # 新用户，自动注册
         user_id = gen_id()
         ts = now()
-        nickname = req.nickname or f"微信用户{user_id[:6]}"
-        avatar = req.avatar or "😀"
+        nickname = wx_profile.get("nickname") or f"微信用户{user_id[:6]}"
+        avatar = "💬"
+        avatar_url = wx_profile.get("avatar") or ""
         username = f"wx_{openid[:8]}"
+        gender = _gender_text(wx_profile.get("gender", 0))
+        region = _region_text(wx_profile)
 
         await db.execute(
-            """INSERT INTO users (id,email,username,nickname,password_hash,avatar,wx_openid,wx_unionid,role,agent_id,created_at,updated_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            """INSERT INTO users (id,email,username,nickname,password_hash,avatar,avatar_url,wx_openid,wx_unionid,gender,region,role,agent_id,created_at,updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (user_id, f"{openid}@wx.local", username, nickname,
-             "", avatar, openid, unionid, "member", "", ts, ts)
+             "", avatar, avatar_url, openid, unionid, gender, region, "member", "", ts, ts)
         )
 
         # 创建数字人分身
@@ -304,13 +375,16 @@ async def wx_login(req: WxLoginReq):
             ("family_default", agent_id, "agent", ts)
         )
         await db.commit()
+        await _refine_wechat_profile(agent_id, wx_profile)
 
         token = create_token(user_id, username)
         return {
             "token": token,
             "user": {
                 "id": user_id, "username": username, "nickname": nickname,
-                "avatar": avatar, "agent_id": agent_id, "is_new": True,
+                "avatar": avatar, "avatar_url": avatar_url,
+                "agent_id": agent_id, "is_new": True,
+                "wx_profile": wx_profile,
             },
         }
     finally:
@@ -431,7 +505,7 @@ async def wx_oauth_login(req: WxOAuthLoginReq):
     db = await get_db()
     try:
         async with db.execute(
-            "SELECT id, username, nickname, avatar, agent_id FROM users WHERE wx_openid=?",
+            "SELECT id, username, nickname, avatar, agent_id, avatar_url FROM users WHERE wx_openid=?",
             (openid,)
         ) as c:
             row = await c.fetchone()
@@ -445,8 +519,8 @@ async def wx_oauth_login(req: WxOAuthLoginReq):
                 if wx_profile.get("nickname") and not row[2]:
                     update_fields.append("nickname=?")
                     update_params.append(wx_profile["nickname"])
-                if wx_profile.get("avatar") and not row[3]:
-                    update_fields.append("avatar=?")
+                if wx_profile.get("avatar"):
+                    update_fields.append("avatar_url=?")
                     update_params.append(wx_profile["avatar"])
                 if wx_profile.get("gender"):
                     update_fields.append("gender=?")
@@ -475,7 +549,6 @@ async def wx_oauth_login(req: WxOAuthLoginReq):
             if wx_profile:
                 try:
                     from ..main import refinement_service
-                    agent_id_row = await db.execute("SELECT agent_id FROM users WHERE id=?", (user_id,))
                     agent_row = await (await db.execute("SELECT agent_id FROM users WHERE id=?", (user_id,))).fetchone()
                     if agent_row and agent_row[0] and refinement_service:
                         await refinement_service.refine_from_wechat_profile(agent_row[0], wx_profile)
@@ -487,7 +560,8 @@ async def wx_oauth_login(req: WxOAuthLoginReq):
                 "token": token,
                 "user": {
                     "id": user_id, "username": row[1], "nickname": row[2],
-                    "avatar": row[3] or "😀", "agent_id": row[4] or "",
+                    "avatar": row[3] or "😀", "avatar_url": wx_profile.get("avatar") or row[5] or "",
+                    "agent_id": row[4] or "",
                     "is_new": False, "wx_profile": wx_profile,
                 },
             }
@@ -496,16 +570,17 @@ async def wx_oauth_login(req: WxOAuthLoginReq):
         user_id = gen_id()
         ts = now()
         nickname = wx_profile.get("nickname", "") or f"微信用户{user_id[:6]}"
-        avatar = wx_profile.get("avatar", "") or "😀"
+        avatar = "💬"
+        avatar_url = wx_profile.get("avatar", "")
         username = f"wx_{openid[:8]}"
         gender = "男" if wx_profile.get("gender") == 1 else "女" if wx_profile.get("gender") == 2 else ""
         region = f"{wx_profile.get('province', '')} {wx_profile.get('city', '')}".strip()
 
         await db.execute(
-            """INSERT INTO users (id,email,username,nickname,password_hash,avatar,wx_openid,wx_unionid,gender,region,role,agent_id,created_at,updated_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            """INSERT INTO users (id,email,username,nickname,password_hash,avatar,avatar_url,wx_openid,wx_unionid,gender,region,role,agent_id,created_at,updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (user_id, f"{openid}@wx.local", username, nickname,
-             "", avatar, openid, unionid, gender, region, "member", "", ts, ts)
+             "", avatar, avatar_url, openid, unionid, gender, region, "member", "", ts, ts)
         )
 
         # 创建数字人分身
@@ -542,7 +617,8 @@ async def wx_oauth_login(req: WxOAuthLoginReq):
             "token": token,
             "user": {
                 "id": user_id, "username": username, "nickname": nickname,
-                "avatar": avatar, "agent_id": agent_id, "is_new": True,
+                "avatar": avatar, "avatar_url": avatar_url,
+                "agent_id": agent_id, "is_new": True,
                 "wx_profile": wx_profile,
             },
         }

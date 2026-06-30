@@ -37,8 +37,15 @@ export const useUserStore = defineStore('user', () => {
   }
 
   /** 微信登录 */
-  async function wxLogin(code) {
-    const res = await api.wxLogin(code)
+  async function wxLogin(code, profile = {}) {
+    const res = await api.wxLogin(code, profile)
+    setLogin(res.token, res.user)
+    return res
+  }
+
+  /** 微信 OAuth 登录（App/H5） */
+  async function wxOAuthLogin(code) {
+    const res = await api.wxOAuthLogin(code)
     setLogin(res.token, res.user)
     return res
   }
@@ -89,6 +96,7 @@ export const useUserStore = defineStore('user', () => {
     login,
     register,
     wxLogin,
+    wxOAuthLogin,
     refreshUserInfo,
     updateProfile,
     logout,

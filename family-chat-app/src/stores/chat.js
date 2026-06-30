@@ -50,6 +50,27 @@ export const useChatStore = defineStore('chat', () => {
   async function sendMessage(data) {
     try {
       const res = await api.sendMessage(data)
+      const message = res?.message || null
+      if (message?.group_id) {
+        addMessage(message.group_id, message)
+      } else if (res?.id && data?.group_id) {
+        addMessage(data.group_id, {
+          id: res.id,
+          group_id: data.group_id,
+          sender_id: '',
+          sender_name: '我',
+          sender_avatar: '',
+          content: data.content || '',
+          msg_type: data.msg_type || 'text',
+          media_url: data.media_url || '',
+          file_name: data.file_name || '',
+          file_size: data.file_size || 0,
+          is_agent: false,
+          created_at: res.created_at || Date.now() / 1000,
+          reactions: [],
+          _status: 'sent',
+        })
+      }
       return res
     } catch (e) {
       console.error('发送消息失败:', e)

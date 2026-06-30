@@ -1,6 +1,7 @@
 """Agent 路由 - 数字人管理/炼化"""
 import json
 from pathlib import Path
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
@@ -25,13 +26,16 @@ class CreateAgentReq(BaseModel):
 
 
 class UpdateAgentReq(BaseModel):
-    name: str = ""
-    avatar: str = ""
-    backstory: str = ""
-    speaking_style: str = ""
-    traits: list = []
-    interests: list = []
-    catchphrases: list = []
+    name: Optional[str] = None
+    avatar: Optional[str] = None
+    backstory: Optional[str] = None
+    speaking_style: Optional[str] = None
+    traits: Optional[list] = None
+    interests: Optional[list] = None
+    catchphrases: Optional[list] = None
+    humor_style: Optional[str] = None
+    relationships: Optional[dict] = None
+    proactive_config: Optional[dict] = None
 
 
 class RefineTextReq(BaseModel):
@@ -58,6 +62,17 @@ async def get_agent(agent_id: str, user=Depends(get_current_user)):
     agent = agent_manager.get_agent(agent_id)
     if not agent:
         raise HTTPException(404, "Agent 不存在")
+    proactive_config = {}
+    db = await get_db()
+    try:
+        async with db.execute("SELECT proactive_config FROM agents WHERE id=?", (agent_id,)) as c:
+            row = await c.fetchone()
+            if row and row[0]:
+                proactive_config = json.loads(row[0] or "{}")
+    except Exception:
+        proactive_config = {}
+    finally:
+        await db.close()
     return {
         "id": agent.agent_id, "name": agent.name,
         "avatar": agent.personality.avatar,
@@ -67,6 +82,8 @@ async def get_agent(agent_id: str, user=Depends(get_current_user)):
         "interests": agent.personality.interests,
         "catchphrases": agent.personality.catchphrases,
         "humor_style": agent.personality.humor_style,
+        "relationships": agent.personality.relationships,
+        "proactive_config": proactive_config,
         "emotion": agent.emotion.current,
         "soul": agent.soul.to_dict(),
         "identity": agent.identity.to_dict(),
@@ -97,33 +114,69 @@ async def update_agent(agent_id: str, req: UpdateAgentReq, user=Depends(get_curr
         raise HTTPException(404)
 
     p = agent.personality
-    if req.name:
+    if req.name is not None:
         agent.name = req.name
         p.name = req.name
-    if req.avatar:
+    if req.avatar is not None:
         p.avatar = req.avatar
-    if req.backstory:
+    if req.backstory is not None:
         p.backstory = req.backstory
-    if req.speaking_style:
+    if req.speaking_style is not None:
         p.speaking_style = req.speaking_style
-    if req.traits:
+    if req.traits is not None:
         p.traits = req.traits
-    if req.interests:
+    if req.interests is not None:
         p.interests = req.interests
-    if req.catchphrases:
+    if req.catchphrases is not None:
         p.catchphrases = req.catchphrases
+    if req.humor_style is not None:
+        p.humor_style = req.humor_style
+    if req.relationships is not None:
+        p.relationships = req.relationships
 
     db = await get_db()
+    proactive_json = None
+    if req.proactive_config is not None:
+        async with db.execute("SELECT proactive_config FROM agents WHERE id=?", (agent_id,)) as c:
+            row = await c.fetchone()
+        current = json.loads(row[0] or "{}") if row else {}
+        current.update(req.proactive_config)
+        proactive_json = json.dumps(current, ensure_ascii=False)
+
+    updates = [
+        "name=?", "avatar=?", "backstory=?", "speaking_style=?", "traits=?",
+        "interests=?", "catchphrases=?", "humor_style=?", "relationships=?", "updated_at=?"
+    ]
+    params = [
+        p.name, p.avatar, p.backstory, p.speaking_style,
+        json.dumps(p.traits, ensure_ascii=False),
+        json.dumps(p.interests, ensure_ascii=False),
+        json.dumps(p.catchphrases, ensure_ascii=False),
+        p.humor_style,
+        json.dumps(p.relationships, ensure_ascii=False),
+        now(),
+    ]
+    if proactive_json is not None:
+        updates.insert(-1, "proactive_config=?")
+        params.insert(-1, proactive_json)
+    params.append(agent_id)
     await db.execute(
-        "UPDATE agents SET name=?,avatar=?,backstory=?,speaking_style=?,traits=?,interests=?,catchphrases=?,updated_at=? WHERE id=?",
-        (p.name, p.avatar, p.backstory, p.speaking_style,
-         json.dumps(p.traits, ensure_ascii=False),
-         json.dumps(p.interests, ensure_ascii=False),
-         json.dumps(p.catchphrases, ensure_ascii=False),
-         now(), agent_id)
+        f"UPDATE agents SET {','.join(updates)} WHERE id=?",
+        params
     )
     await db.commit()
     await db.close()
+    return {"status": "ok"}
+
+
+@router.delete("/{agent_id}")
+async def delete_agent(agent_id: str, user=Depends(get_current_user)):
+    from ..main import agent_manager, voice_profile_manager
+    ok = await agent_manager.delete_agent(agent_id)
+    if not ok:
+        raise HTTPException(404, "Agent 不存在")
+    if voice_profile_manager and agent_id in getattr(voice_profile_manager, "_agent_voice_map", {}):
+        voice_profile_manager._agent_voice_map.pop(agent_id, None)
     return {"status": "ok"}
 
 

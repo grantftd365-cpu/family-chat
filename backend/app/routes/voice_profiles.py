@@ -1,8 +1,11 @@
 """语音音色管理 API"""
+import os
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from ..core.auth import get_current_user
-from ..models.database import get_db
 
 router = APIRouter(prefix="/api/voice-profiles")
 
@@ -72,6 +75,11 @@ async def upload_voice_profile(
     voice_engine='edge-tts': 分析音色特征匹配预设声音
     voice_engine='elevenlabs': 使用 ElevenLabs 克隆一模一样的声音
     """
+    if voice_engine not in ("edge-tts", "elevenlabs"):
+        raise HTTPException(400, "voice_engine 仅支持 edge-tts 或 elevenlabs")
+    if voice_engine == "elevenlabs" and not os.getenv("ELEVENLABS_API_KEY", ""):
+        raise HTTPException(400, "声音克隆未配置 ELEVENLABS_API_KEY，请先在服务器环境变量中启用克隆引擎")
+
     if not file.content_type or not file.content_type.startswith("audio/"):
         if not file.content_type or not file.content_type.startswith("video/"):
             raise HTTPException(400, "请上传音频或视频文件")
@@ -106,6 +114,25 @@ async def upload_voice_profile(
         if os.path.exists(temp_path):
             os.remove(temp_path)
         raise HTTPException(500, f"创建音色配置失败: {e}")
+
+
+@router.get("/diagnostics")
+async def voice_diagnostics(user=Depends(get_current_user)):
+    """检查语音合成/克隆能力是否可用。"""
+    mgr = _get_voice_manager()
+    return {
+        "tts": {
+            "engine": "edge-tts",
+            "available": True,
+            "voice_count": len(mgr.get_available_voices()),
+        },
+        "clone": {
+            "engine": "elevenlabs",
+            "available": bool(os.getenv("ELEVENLABS_API_KEY", "")),
+            "required_env": "ELEVENLABS_API_KEY",
+            "min_audio_seconds": 60,
+        },
+    }
 
 
 @router.get("/{profile_id}")
@@ -170,6 +197,7 @@ async def synthesize_voice(
     text: str = Form(...),
     profile_id: str = Form(""),
     edge_voice_id: str = Form(""),
+    as_url: bool = Form(False),
     user=Depends(get_current_user)
 ):
     """使用指定音色合成语音（预览）"""
@@ -177,5 +205,6 @@ async def synthesize_voice(
     output_path = await mgr.synthesize(text, profile_id=profile_id, edge_voice_id=edge_voice_id)
     if not output_path:
         raise HTTPException(500, "语音合成失败")
-    from fastapi.responses import FileResponse
+    if as_url:
+        return {"url": f"/api/voice/{Path(output_path).name}"}
     return FileResponse(output_path, media_type="audio/mpeg")

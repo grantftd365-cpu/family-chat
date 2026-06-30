@@ -67,17 +67,15 @@
         </view>
 
         <!-- 微信登录 -->
-        <!-- #ifdef MP-WEIXIN -->
         <view class="divider">
           <view class="divider-line"></view>
           <text class="divider-text">其他登录方式</text>
           <view class="divider-line"></view>
         </view>
-        <view class="wx-login-btn" @tap="handleWxLogin">
+        <view class="wx-login-btn" :class="{ disabled: wxLoading }" @tap="handleWxLogin">
           <text class="wx-icon">💬</text>
-          <text>微信一键登录</text>
+          <text>{{ wxLoading ? '微信登录中...' : '微信一键登录 / 注册' }}</text>
         </view>
-        <!-- #endif -->
       </view>
 
       <!-- 注册表单 -->
@@ -175,6 +173,7 @@
 import { ref, reactive } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { useUserStore } from '../../stores/user'
+import * as api from '../../utils/api'
 import { clearServerUrl, getDisplayServerUrl, isLocalServerUrl, saveServerUrl } from '../../utils/server-config'
 
 const userStore = useUserStore()
@@ -184,6 +183,7 @@ const currentTab = ref('login')
 const showPassword = ref(false)
 const loginLoading = ref(false)
 const registerLoading = ref(false)
+const wxLoading = ref(false)
 const showServerModal = ref(false)
 const serverUrlLabel = ref('默认')
 const serverForm = reactive({ url: '' })
@@ -201,10 +201,14 @@ const registerForm = reactive({
   role_in_family: ''
 })
 
-onLoad(() => {
+onLoad((options = {}) => {
   const sysInfo = uni.getSystemInfoSync()
   statusBarHeight.value = sysInfo.statusBarHeight || 44
   refreshServerUrlLabel()
+  if (options.code && options.state === 'familychat') {
+    completeWxOAuthLogin(options.code)
+    return
+  }
   // 已登录则跳转
   if (userStore.isLoggedIn) {
     uni.switchTab({ url: '/pages/index/index' })
@@ -291,27 +295,128 @@ async function handleRegister() {
   }
 }
 
+function goHomeAfterLogin() {
+  uni.showToast({ title: '登录成功', icon: 'success' })
+  setTimeout(() => {
+    uni.switchTab({ url: '/pages/index/index' })
+  }, 500)
+}
+
+function normalizeWxProfile(info = {}, extra = {}) {
+  return {
+    nickname: info.nickName || info.nickname || '',
+    avatar: info.avatarUrl || info.avatar || '',
+    gender: Number(info.gender || 0),
+    province: info.province || '',
+    city: info.city || '',
+    country: info.country || '',
+    language: info.language || 'zh_CN',
+    encrypted_data: extra.encryptedData || '',
+    iv: extra.iv || '',
+    raw_data: extra.rawData || '',
+    signature: extra.signature || '',
+  }
+}
+
+function getMpWeixinProfile() {
+  return new Promise(resolve => {
+    if (!uni.getUserProfile) {
+      resolve({})
+      return
+    }
+    uni.getUserProfile({
+      desc: '用于完善 FamilyChat 登录资料和数字人基础画像',
+      success: res => resolve(normalizeWxProfile(res.userInfo || {}, res)),
+      fail: () => {
+        uni.showToast({ title: '未授权资料，将仅用微信身份登录', icon: 'none' })
+        resolve({})
+      }
+    })
+  })
+}
+
+async function completeWxOAuthLogin(code) {
+  if (wxLoading.value) return
+  wxLoading.value = true
+  try {
+    await userStore.wxOAuthLogin(code)
+    goHomeAfterLogin()
+  } catch (error) {
+    uni.showToast({ title: error.message || '微信登录失败', icon: 'none' })
+    console.error('微信 OAuth 登录失败:', error)
+  } finally {
+    wxLoading.value = false
+  }
+}
+
 function handleWxLogin() {
+  if (wxLoading.value) return
+  wxLoading.value = true
+
   // #ifdef MP-WEIXIN
   uni.login({
     provider: 'weixin',
     success: async (loginRes) => {
       try {
-        await userStore.wxLogin(loginRes.code)
-        uni.showToast({ title: '登录成功', icon: 'success' })
-        setTimeout(() => {
-          uni.switchTab({ url: '/pages/index/index' })
-        }, 500)
+        const profile = await getMpWeixinProfile()
+        await userStore.wxLogin(loginRes.code, profile)
+        goHomeAfterLogin()
       } catch (e) {
+        uni.showToast({ title: e.message || '微信登录失败', icon: 'none' })
         console.error('微信登录失败:', e)
+      } finally {
+        wxLoading.value = false
       }
     },
     fail: (err) => {
+      wxLoading.value = false
       uni.showToast({ title: '微信登录失败', icon: 'none' })
       console.error('wx login fail:', err)
     }
   })
+  return
   // #endif
+
+  // #ifdef APP-PLUS
+  uni.login({
+    provider: 'weixin',
+    scopes: 'auth_user',
+    success: async (loginRes) => {
+      try {
+        const code = loginRes.code || loginRes.authResult?.code || ''
+        if (!code) throw new Error('未获取到微信授权 code，请检查 App 微信登录配置')
+        await userStore.wxOAuthLogin(code)
+        goHomeAfterLogin()
+      } catch (e) {
+        uni.showToast({ title: e.message || '微信登录失败', icon: 'none' })
+        console.error('App 微信登录失败:', e)
+      } finally {
+        wxLoading.value = false
+      }
+    },
+    fail: (err) => {
+      wxLoading.value = false
+      uni.showToast({ title: '微信登录失败，请检查 AppID 和签名', icon: 'none' })
+      console.error('app wx login fail:', err)
+    }
+  })
+  return
+  // #endif
+
+  // #ifdef H5
+  api.getWxOAuthUrl(`${window.location.origin}${window.location.pathname}`)
+    .then(res => {
+      window.location.href = res.url
+    })
+    .catch(error => {
+      wxLoading.value = false
+      uni.showToast({ title: error.message || '微信登录未配置', icon: 'none' })
+    })
+  return
+  // #endif
+
+  wxLoading.value = false
+  uni.showToast({ title: '当前平台未配置微信登录', icon: 'none' })
 }
 </script>
 
@@ -499,6 +604,11 @@ function handleWxLogin() {
 
   &:active {
     background: rgba(7, 193, 96, 0.05);
+  }
+
+  &.disabled {
+    opacity: 0.6;
+    pointer-events: none;
   }
 }
 

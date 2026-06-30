@@ -9,6 +9,14 @@
     </view>
 
     <scroll-view scroll-y class="voice-list">
+      <view class="diagnostic-card">
+        <view>
+          <text class="diagnostic-title">数字人语音能力</text>
+          <text class="diagnostic-desc">Edge-TTS 可直接说话；真声音克隆需要服务器配置 ElevenLabs Key</text>
+        </view>
+        <text class="diagnostic-badge" :class="{ ok: cloneAvailable }">{{ cloneAvailable ? '克隆可用' : '克隆未启用' }}</text>
+      </view>
+
       <!-- 可用声音列表 -->
       <view class="section-title">
         <text>可用声音</text>
@@ -126,6 +134,17 @@
         <text class="record-title">录制音色</text>
         <input v-model="recordName" placeholder="输入音色名称（如：我的声音）" class="record-name-input" />
 
+        <view class="engine-switch">
+          <view class="engine-option" :class="{ active: voiceEngine === 'edge-tts' }" @tap="voiceEngine = 'edge-tts'">
+            <text class="engine-title">快速匹配</text>
+            <text class="engine-desc">分析声线，匹配中文 TTS</text>
+          </view>
+          <view class="engine-option" :class="{ active: voiceEngine === 'elevenlabs', disabled: !cloneAvailable }" @tap="selectCloneEngine">
+            <text class="engine-title">声音克隆</text>
+            <text class="engine-desc">需要 1 分钟以上录音</text>
+          </view>
+        </view>
+
         <view class="record-area">
           <view class="record-wave" :class="{ active: isRecording }">
             <view v-for="i in 5" :key="i" class="wave-bar" :style="{ animationDelay: i * 0.1 + 's' }"></view>
@@ -142,14 +161,14 @@
           </view>
         </view>
 
-        <text class="record-hint">请用正常语速说一段话（建议10-30秒）</text>
+        <text class="record-hint">快速匹配建议10-30秒；声音克隆建议至少1分钟清晰语音</text>
       </view>
     </view>
   </view>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { computed, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import * as api from '../../utils/api'
 
@@ -160,12 +179,16 @@ const agents = ref([])
 const selectedVoice = ref('')
 const showAddVoice = ref(false)
 const showRecording = ref(false)
+const voiceEngine = ref('edge-tts')
+const voiceDiagnostics = ref(null)
 const isRecording = ref(false)
 const recordName = ref('')
 const recordTime = ref(0)
 const agentVoiceMap = ref({})
 let recorderManager = null
 let recordTimer = null
+
+const cloneAvailable = computed(() => !!voiceDiagnostics.value?.clone?.available)
 
 onLoad(() => {
   const sysInfo = uni.getSystemInfoSync()
@@ -184,6 +207,9 @@ async function loadData() {
     availableVoices.value = voicesRes.voices || []
     customProfiles.value = profilesRes.profiles || []
     agents.value = Array.isArray(agentsRes) ? agentsRes : (agentsRes.agents || [])
+    api.getVoiceDiagnostics()
+      .then(res => { voiceDiagnostics.value = res })
+      .catch(() => { voiceDiagnostics.value = null })
 
     // 加载每个 agent 的音色映射
     for (const agent of agents.value) {
@@ -211,10 +237,11 @@ function initRecorder() {
     // 上传录音
     uni.showLoading({ title: '分析音色中...' })
     try {
-      const profile = await api.uploadVoiceProfile(recordName.value || '我的声音', res.tempFilePath)
+      const profile = await api.uploadVoiceProfile(recordName.value || '我的声音', res.tempFilePath, '', voiceEngine.value)
       customProfiles.value.push(profile)
       showRecording.value = false
       recordName.value = ''
+      voiceEngine.value = 'edge-tts'
       uni.showToast({ title: '音色创建成功', icon: 'success' })
     } catch (e) {
       uni.showToast({ title: '创建失败: ' + (e.message || '未知错误'), icon: 'none' })
@@ -278,6 +305,29 @@ function startRecordVoice() {
   showAddVoice.value = false
   showRecording.value = true
   recordTime.value = 0
+  voiceEngine.value = 'edge-tts'
+}
+
+function selectCloneEngine() {
+  if (!cloneAvailable.value) {
+    uni.showToast({ title: '服务器未配置声音克隆 Key', icon: 'none' })
+    return
+  }
+  voiceEngine.value = 'elevenlabs'
+}
+
+function chooseVoiceEngine() {
+  return new Promise(resolve => {
+    if (!cloneAvailable.value) {
+      resolve('edge-tts')
+      return
+    }
+    uni.showActionSheet({
+      itemList: ['快速匹配音色', '声音克隆（需1分钟以上）'],
+      success: res => resolve(res.tapIndex === 1 ? 'elevenlabs' : 'edge-tts'),
+      fail: () => resolve('edge-tts')
+    })
+  })
 }
 
 function startRecord() {
@@ -300,8 +350,9 @@ function stopRecord() {
   recorderManager.stop()
 }
 
-function uploadAudio() {
+async function uploadAudio() {
   showAddVoice.value = false
+  const engine = await chooseVoiceEngine()
   uni.chooseImage({
     count: 1,
     extension: ['mp3', 'wav', 'ogg', 'm4a'],
@@ -309,7 +360,7 @@ function uploadAudio() {
       const filePath = res.tempFiles[0].path || res.tempFilePaths[0]
       uni.showLoading({ title: '分析音色中...' })
       try {
-        const profile = await api.uploadVoiceProfile('上传的音色', filePath)
+        const profile = await api.uploadVoiceProfile('上传的音色', filePath, '', engine)
         customProfiles.value.push(profile)
         uni.showToast({ title: '创建成功', icon: 'success' })
       } catch (e) {
@@ -321,14 +372,15 @@ function uploadAudio() {
   })
 }
 
-function uploadVideoForVoice() {
+async function uploadVideoForVoice() {
   showAddVoice.value = false
+  const engine = await chooseVoiceEngine()
   uni.chooseVideo({
     count: 1,
     success: async (res) => {
       uni.showLoading({ title: '提取音色中...' })
       try {
-        const profile = await api.uploadVoiceProfile('视频提取的音色', res.tempFilePath)
+        const profile = await api.uploadVoiceProfile('视频提取的音色', res.tempFilePath, '', engine)
         customProfiles.value.push(profile)
         uni.showToast({ title: '提取成功', icon: 'success' })
       } catch (e) {
@@ -384,14 +436,38 @@ function goBack() { uni.navigateBack() }
 </script>
 
 <style lang="scss" scoped>
-.voice-page { min-height: 100vh; background: var(--bg-color); }
-.nav-bar { background: $primary-color; }
+.voice-page { min-height: 100vh; background: linear-gradient(180deg, #101828 0%, #18233a 30%, #f5f7fb 30%, #f5f7fb 100%); }
+.nav-bar { background: transparent; }
 .nav-content { display: flex; align-items: center; height: 88rpx; padding: 0 30rpx; }
 .nav-back { font-size: 48rpx; color: #fff; padding-right: 16rpx; }
 .nav-title { flex: 1; text-align: center; font-size: $font-lg; font-weight: bold; color: #fff; }
 .nav-action { font-size: 36rpx; padding: 8rpx; }
 .voice-list { height: calc(100vh - 88rpx); }
 .section-title { padding: 24rpx 30rpx 12rpx; font-size: $font-sm; color: var(--text-secondary); font-weight: 500; }
+
+.diagnostic-card {
+  margin: 22rpx 24rpx 8rpx;
+  padding: 26rpx;
+  border-radius: 32rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18rpx;
+  background: rgba(255,255,255,0.94);
+  box-shadow: 0 18rpx 50rpx rgba(16,24,40,0.14);
+  border: 1rpx solid rgba(255,255,255,0.68);
+}
+.diagnostic-title { display: block; font-size: 30rpx; font-weight: 800; color: #101828; }
+.diagnostic-desc { display: block; margin-top: 8rpx; font-size: 22rpx; line-height: 1.45; color: #667085; }
+.diagnostic-badge {
+  flex-shrink: 0;
+  padding: 10rpx 16rpx;
+  border-radius: 999rpx;
+  font-size: 22rpx;
+  color: #b42318;
+  background: #fff1f3;
+  &.ok { color: #027a48; background: #ecfdf3; }
+}
 
 .voice-grid { display: flex; flex-wrap: wrap; padding: 0 20rpx; gap: 16rpx; }
 .voice-card {
@@ -467,6 +543,19 @@ function goBack() { uni.navigateBack() }
   height: 80rpx; background: var(--bg-color); border-radius: $radius-base;
   padding: 0 24rpx; font-size: $font-base; margin-bottom: 32rpx; text-align: left; color: var(--text-primary);
 }
+.engine-switch { display: flex; gap: 14rpx; margin-bottom: 26rpx; }
+.engine-option {
+  flex: 1;
+  padding: 18rpx;
+  border-radius: 22rpx;
+  background: #f8fafc;
+  border: 2rpx solid transparent;
+  text-align: left;
+  &.active { border-color: #12b76a; background: #ecfdf3; }
+  &.disabled { opacity: 0.52; }
+}
+.engine-title { display: block; font-size: 26rpx; font-weight: 800; color: #101828; }
+.engine-desc { display: block; margin-top: 6rpx; font-size: 20rpx; color: #667085; line-height: 1.35; }
 .record-area { margin: 32rpx 0; }
 .record-wave { display: flex; justify-content: center; gap: 8rpx; height: 80rpx; align-items: center; }
 .wave-bar {
