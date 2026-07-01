@@ -100,6 +100,21 @@ class FavoriteReq(BaseModel):
 async def list_groups(user=Depends(get_current_user)):
     db = await get_db()
     try:
+        await db.execute(
+            "INSERT OR IGNORE INTO groups (id,name,owner_id,description,avatar,created_at,updated_at) VALUES (?,?,?,?,?,?,?)",
+            ("family_default", "我们的家庭", "system", "家庭聊天群", "👥", now(), now())
+        )
+        await db.execute(
+            "INSERT OR IGNORE INTO group_members (group_id,user_id,role,joined_at) VALUES (?,?,?,?)",
+            ("family_default", user["user_id"], "member", now())
+        )
+        await db.execute(
+            """INSERT OR IGNORE INTO group_members (group_id,user_id,role,joined_at)
+               SELECT 'family_default', id, 'agent', ? FROM agents WHERE enabled=1""",
+            (now(),)
+        )
+        await db.commit()
+
         groups = []
         async with db.execute("""
             SELECT g.id, g.name, g.avatar, g.description, g.announcement, g.owner_id,
@@ -286,13 +301,16 @@ async def group_members(group_id: str, user=Depends(get_current_user)):
             LEFT JOIN users u ON gm.user_id=u.id
             LEFT JOIN agents a ON gm.user_id=a.id
             WHERE gm.group_id=?
+            ORDER BY CASE WHEN a.id IS NOT NULL THEN 0 ELSE 1 END,
+                     CASE gm.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 WHEN 'agent' THEN 2 ELSE 3 END,
+                     name
         """, (group_id,)) as cursor:
             async for row in cursor:
                 members.append({
                     "id": row[0], "role": row[1], "group_nickname": row[2] or "",
                     "muted_until": row[3], "name": row[4] or row[0],
                     "avatar": row[5] or "😀", "avatar_url": row[6] or "",
-                    "is_agent": row[1] == "agent",
+                    "is_agent": row[1] == "agent" or str(row[0]).startswith("agent_"),
                     "online_status": row[7], "signature": row[8] or "",
                 })
         return members

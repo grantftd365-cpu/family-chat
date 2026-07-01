@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <view class="chat-page">
     <!-- 导航栏 -->
     <view class="nav-bar" :style="{ paddingTop: statusBarHeight + 'px' }">
@@ -342,13 +342,30 @@
                 <text class="mention-role">{{ member.is_agent ? '数字人' : '真人' }}</text>
               </view>
             </view>
+            <view v-if="mentionableMembers.length === 0" class="mention-empty">
+              <text>暂无可 @ 的家庭成员或数字人</text>
+            </view>
           </view>
         </scroll-view>
       </view>
 
       <!-- 表情面板 -->
       <view v-show="showEmoji" class="panel-area" :class="{ 'panel-visible': showEmoji }">
-        <emoji-panel @select="onEmojiSelect" @delete="onEmojiDelete" />
+        <view class="inline-emoji-panel">
+          <view class="inline-emoji-grid">
+            <view
+              v-for="emoji in emojiList"
+              :key="emoji"
+              class="inline-emoji-item"
+              @tap="onEmojiSelect(emoji)"
+            >
+              <text>{{ emoji }}</text>
+            </view>
+          </view>
+          <view class="inline-emoji-delete" @tap="onEmojiDelete">
+            <text>&#9003;</text>
+          </view>
+        </view>
       </view>
 
       <!-- 更多面板 -->
@@ -477,10 +494,17 @@ const SEARCH_RESULT_LIMIT = 200
 const MAX_RENDERED_MESSAGES = 160
 const reactingMsgId = ref(null) // 防并发锁
 const groupMembers = ref([])
+const mentionAgents = ref([])
 
 // 快速表情回应
 const quickReactMsgId = ref(null)
 const quickEmojis = ['👍', '❤️', '😂', '😮', '😢', '🎉']
+const emojiList = [
+  '\u{1F600}', '\u{1F602}', '\u{1F923}', '\u{1F60A}', '\u{1F60D}', '\u{1F970}', '\u{1F618}', '\u{1F60B}', '\u{1F914}', '\u{1F605}',
+  '\u{1F622}', '\u{1F62D}', '\u{1F621}', '\u{1F97A}', '\u{1F634}', '\u{1F44D}', '\u{1F44E}', '\u{1F44F}', '\u{1F64F}', '\u{1F4AA}',
+  '\u2764\uFE0F', '\u{1F9E1}', '\u{1F49B}', '\u{1F49A}', '\u{1F499}', '\u{1F49C}', '\u{1F495}', '\u{1F496}', '\u{1F525}', '\u2728',
+  '\u{1F389}', '\u{1F38A}', '\u{1F382}', '\u{1F381}', '\u{1F339}', '\u{1F308}', '\u2615', '\u{1F35C}', '\u{1F9E7}', '\u{1F3E0}',
+]
 
 let typingTimer = null
 let recorderManager = null
@@ -490,7 +514,24 @@ let currentAudioCtx = null
 const currentUserId = computed(() => userStore.userInfo?.id)
 const messages = computed(() => chatStore.messagesMap[groupId.value] || [])
 const mentionableMembers = computed(() => {
-  return groupMembers.value.filter(member => member.id !== currentUserId.value)
+  const merged = new Map()
+  groupMembers.value.forEach(member => {
+    if (member?.id && member.id !== currentUserId.value) merged.set(member.id, member)
+  })
+  mentionAgents.value.forEach(agent => {
+    if (!agent?.id || agent.id === currentUserId.value || merged.has(agent.id)) return
+    merged.set(agent.id, {
+      id: agent.id,
+      role: 'agent',
+      name: agent.name || agent.identity?.nickname || '数字人',
+      avatar: agent.avatar || '🤖',
+      avatar_url: '',
+      is_agent: true,
+      online_status: 'agent',
+      signature: agent.identity?.role_in_family || '家庭数字人',
+    })
+  })
+  return Array.from(merged.values()).sort((a, b) => Number(!a.is_agent) - Number(!b.is_agent))
 })
 
 // 过滤消息（搜索模式下只显示匹配的）
@@ -601,11 +642,16 @@ async function loadMessages() {
 async function loadGroupMembers() {
   if (!groupId.value) return
   try {
-    const res = await api.getGroupMembers(groupId.value)
-    groupMembers.value = Array.isArray(res) ? res : (res.members || [])
+    const [membersRes, agentsRes] = await Promise.all([
+      api.getGroupMembers(groupId.value).catch(() => []),
+      api.getAgents().catch(() => []),
+    ])
+    groupMembers.value = Array.isArray(membersRes) ? membersRes : (membersRes.members || [])
+    mentionAgents.value = Array.isArray(agentsRes) ? agentsRes : []
   } catch (e) {
     console.error('加载群成员失败:', e)
     groupMembers.value = []
+    mentionAgents.value = []
   }
 }
 
@@ -2226,6 +2272,17 @@ function reEditMessage(msg) {
   color: var(--text-secondary);
 }
 
+.mention-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 420rpx;
+  height: 92rpx;
+  padding: 0 24rpx;
+  color: var(--text-secondary);
+  font-size: $font-sm;
+}
+
 .panel-area {
   border-top: 1rpx solid rgba(234,236,240,0.9);
   overflow: hidden;
@@ -2237,6 +2294,49 @@ function reEditMessage(msg) {
     height: 420rpx;
     opacity: 1;
   }
+}
+
+.inline-emoji-panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+}
+
+.inline-emoji-grid {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  padding: 22rpx 22rpx 8rpx;
+  gap: 10rpx;
+  overflow: hidden;
+}
+
+.inline-emoji-item {
+  width: 76rpx;
+  height: 76rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 20rpx;
+  background: rgba(255,255,255,0.78);
+  font-size: 42rpx;
+}
+
+.inline-emoji-item:active {
+  transform: scale(1.08);
+  background: #eef4ff;
+}
+
+.inline-emoji-delete {
+  height: 72rpx;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 32rpx 16rpx;
+  color: var(--text-secondary);
+  font-size: 38rpx;
 }
 
 .more-grid {

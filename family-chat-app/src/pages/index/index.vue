@@ -52,13 +52,13 @@
       >
         <view class="avatar-wrap">
           <image
-            v-if="group.avatar"
+            v-if="isImageAvatar(group.avatar)"
             :src="group.avatar"
             class="avatar"
             mode="aspectFill"
           />
           <view v-else class="avatar avatar-default">
-            <text>{{ (group.name || '?')[0] }}</text>
+            <text>{{ groupAvatarText(group) }}</text>
           </view>
           <view v-if="unreadMap[group.id]" class="badge">
             <text>{{ unreadMap[group.id] > 99 ? '99+' : unreadMap[group.id] }}</text>
@@ -164,6 +164,16 @@ async function onRefresh() {
   refreshing.value = true
   await loadData()
   refreshing.value = false
+}
+
+function isImageAvatar(value) {
+  return /^(https?:|data:|file:|blob:|\/)/i.test(String(value || ''))
+}
+
+function groupAvatarText(group) {
+  const avatar = group?.avatar || ''
+  if (avatar && !isImageAvatar(avatar) && Array.from(avatar).length <= 3) return avatar
+  return (group?.name || '?').slice(0, 1)
 }
 
 function goChat(group) {

@@ -1527,18 +1527,34 @@ class AgentManager:
 
     async def delete_agent(self, agent_id: str) -> bool:
         """删除数字人配置和关联学习数据，历史消息保留。"""
-        if agent_id not in self.agents:
+        db = await self._get_db()
+        try:
+            async with db.execute("SELECT 1 FROM agents WHERE id=?", (agent_id,)) as cursor:
+                exists_in_db = await cursor.fetchone()
+        finally:
+            await db.close()
+
+        if agent_id not in self.agents and not exists_in_db:
             return False
         db = await self._get_db()
         try:
-            await db.execute("DELETE FROM group_members WHERE user_id=?", (agent_id,))
-            await db.execute("DELETE FROM agent_memories WHERE agent_id=?", (agent_id,))
-            await db.execute("DELETE FROM agent_relationship_profiles WHERE agent_id=?", (agent_id,))
-            await db.execute("DELETE FROM agent_growth_events WHERE agent_id=?", (agent_id,))
-            await db.execute("DELETE FROM agent_voice_map WHERE agent_id=?", (agent_id,))
-            await db.execute("DELETE FROM human_essence WHERE agent_id=?", (agent_id,))
-            await db.execute("DELETE FROM refinement_sessions WHERE agent_id=?", (agent_id,))
-            await db.execute("DELETE FROM refinement_logs WHERE agent_id=?", (agent_id,))
+            cleanup_targets = (
+                ("group_members", "user_id"),
+                ("agent_memories", "agent_id"),
+                ("agent_relationship_profiles", "agent_id"),
+                ("agent_relationship_profiles", "person_id"),
+                ("agent_growth_events", "agent_id"),
+                ("agent_growth_events", "person_id"),
+                ("agent_voice_map", "agent_id"),
+                ("human_essence", "agent_id"),
+                ("refinement_sessions", "agent_id"),
+                ("refinement_logs", "agent_id"),
+            )
+            for table, column in cleanup_targets:
+                try:
+                    await db.execute(f"DELETE FROM {table} WHERE {column}=?", (agent_id,))
+                except Exception as exc:
+                    logger.debug(f"删除数字人关联表 {table}.{column} 跳过: {exc}")
             await db.execute("DELETE FROM agents WHERE id=?", (agent_id,))
             await db.commit()
             self.agents.pop(agent_id, None)
