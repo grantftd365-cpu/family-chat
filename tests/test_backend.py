@@ -469,6 +469,90 @@ async def test_agent_relationship_growth():
     return r
 
 
+async def test_family_multi_tenant_isolation():
+    print("\n📋 多家庭隔离与群权限测试")
+    r = TestResult()
+
+    from backend.app.models.database import init_db, get_db, now
+    from backend.app.services.family import ensure_user_family_group, detach_legacy_global_family
+    from backend.app.agents.core import AgentManager
+
+    await init_db()
+    db = await get_db()
+    try:
+        ts = now()
+        await db.execute("DELETE FROM group_members WHERE user_id LIKE 'user_iso_%' OR user_id LIKE 'agent_iso_%'")
+        await db.execute("DELETE FROM groups WHERE id LIKE 'family_user_iso_%' OR id='group_iso_a' OR id='family_default'")
+        await db.execute("DELETE FROM agents WHERE id LIKE 'agent_iso_%'")
+        await db.execute("DELETE FROM users WHERE id LIKE 'user_iso_%'")
+        for idx in (1, 2):
+            await db.execute(
+                "INSERT INTO users (id,email,username,nickname,password_hash,avatar,role,agent_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (f"user_iso_{idx}", f"iso{idx}@test.local", f"iso{idx}", f"测试用户{idx}", "x", "😀", "member", f"agent_iso_{idx}", ts, ts),
+            )
+            await db.execute(
+                "INSERT INTO agents (id,user_id,name,avatar,enabled,created_at,updated_at) VALUES (?,?,?,?,?,?,?)",
+                (f"agent_iso_{idx}", f"user_iso_{idx}", f"数字人{idx}", "🤖", 1, ts, ts),
+            )
+        await db.commit()
+
+        family1 = await ensure_user_family_group(db, "user_iso_1", "agent_iso_1")
+        family2 = await ensure_user_family_group(db, "user_iso_2", "agent_iso_2")
+        await db.commit()
+        if family1 != family2:
+            r.ok("每个用户默认家庭群独立")
+        else:
+            r.fail("默认家庭群", f"两个用户共用了 {family1}")
+
+        async with db.execute("SELECT user_id FROM group_members WHERE group_id=? ORDER BY user_id", (family1,)) as c:
+            family1_members = [row[0] async for row in c]
+        if "user_iso_2" not in family1_members and "agent_iso_2" not in family1_members:
+            r.ok("家庭群不会自动加入其他家庭成员或数字人")
+        else:
+            r.fail("家庭群串成员", str(family1_members))
+
+        await db.execute(
+            "INSERT INTO groups (id,name,owner_id,description,created_at,updated_at) VALUES (?,?,?,?,?,?)",
+            ("family_default", "我们的家庭", "system", "旧全局群", ts, ts),
+        )
+        await db.execute(
+            "INSERT INTO group_members (group_id,user_id,role,joined_at) VALUES (?,?,?,?)",
+            ("family_default", "user_iso_1", "member", ts),
+        )
+        await db.execute(
+            "INSERT INTO group_members (group_id,user_id,role,joined_at) VALUES (?,?,?,?)",
+            ("family_default", "agent_iso_1", "agent", ts),
+        )
+        await detach_legacy_global_family(db, "user_iso_1", "agent_iso_1")
+        await db.commit()
+        async with db.execute("SELECT COUNT(*) FROM group_members WHERE group_id='family_default' AND user_id IN ('user_iso_1','agent_iso_1')") as c:
+            legacy_count = (await c.fetchone())[0]
+        if legacy_count == 0:
+            r.ok("旧全局家庭群会从用户侧脱钩")
+        else:
+            r.fail("旧全局群脱钩", f"残留 {legacy_count} 条")
+
+        manager = AgentManager(db, {"provider": "deepseek", "api_key": "test-key", "model": "deepseek-v4-flash", "base_url": "https://api.deepseek.com"})
+        await manager.load_agents()
+        ids = await manager.get_group_agent_ids(family1)
+        if ids == {"agent_iso_1"}:
+            r.ok("Agent 回复范围限制在当前群")
+        else:
+            r.fail("Agent 群范围", str(ids))
+
+        cleanup_ids = ["user_iso_1", "user_iso_2", "agent_iso_1", "agent_iso_2"]
+        placeholders = ",".join("?" * len(cleanup_ids))
+        await db.execute(f"DELETE FROM group_members WHERE user_id IN ({placeholders})", cleanup_ids)
+        await db.execute("DELETE FROM groups WHERE id LIKE 'family_user_iso_%' OR id='group_iso_a' OR id='family_default'")
+        await db.execute("DELETE FROM agents WHERE id LIKE 'agent_iso_%'")
+        await db.execute("DELETE FROM users WHERE id LIKE 'user_iso_%'")
+        await db.commit()
+    finally:
+        await db.close()
+
+    return r
+
+
 # ==================== 运行所有测试 ====================
 
 def main():
@@ -489,6 +573,7 @@ def main():
     results.append(run_async(test_reactions()))
     results.append(run_async(test_agent_memory_sessions()))
     results.append(run_async(test_agent_relationship_growth()))
+    results.append(run_async(test_family_multi_tenant_isolation()))
 
     # 汇总
     all_passed = all(r.summary() for r in results)

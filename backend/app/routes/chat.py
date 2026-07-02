@@ -14,6 +14,13 @@ from loguru import logger
 from ..core.auth import get_current_user
 from ..core.websocket import ws_manager
 from ..models.database import get_db, gen_id, now
+from ..services.family import (
+    detach_legacy_global_family,
+    ensure_user_family_group,
+    get_user_agent_id,
+    require_group_admin,
+    require_group_member,
+)
 from ..services.delivery import MessageDelivery, ReactionManager
 
 router = APIRouter(prefix="/api")
@@ -100,19 +107,9 @@ class FavoriteReq(BaseModel):
 async def list_groups(user=Depends(get_current_user)):
     db = await get_db()
     try:
-        await db.execute(
-            "INSERT OR IGNORE INTO groups (id,name,owner_id,description,avatar,created_at,updated_at) VALUES (?,?,?,?,?,?,?)",
-            ("family_default", "我们的家庭", "system", "家庭聊天群", "👥", now(), now())
-        )
-        await db.execute(
-            "INSERT OR IGNORE INTO group_members (group_id,user_id,role,joined_at) VALUES (?,?,?,?)",
-            ("family_default", user["user_id"], "member", now())
-        )
-        await db.execute(
-            """INSERT OR IGNORE INTO group_members (group_id,user_id,role,joined_at)
-               SELECT 'family_default', id, 'agent', ? FROM agents WHERE enabled=1""",
-            (now(),)
-        )
+        agent_id = await get_user_agent_id(db, user["user_id"])
+        await ensure_user_family_group(db, user["user_id"], agent_id)
+        await detach_legacy_global_family(db, user["user_id"], agent_id)
         await db.commit()
 
         groups = []
@@ -171,13 +168,12 @@ async def create_group(req: CreateGroupReq, user=Depends(get_current_user)):
             "INSERT INTO group_members (group_id,user_id,role,joined_at) VALUES (?,?,?,?)",
             (group_id, user["user_id"], "owner", ts)
         )
-        # 加入所有 Agent
-        async with db.execute("SELECT id FROM agents WHERE enabled=1") as c:
-            async for row in c:
-                await db.execute(
-                    "INSERT OR IGNORE INTO group_members (group_id,user_id,role,joined_at) VALUES (?,?,?,?)",
-                    (group_id, row[0], "agent", ts)
-                )
+        agent_id = await get_user_agent_id(db, user["user_id"])
+        if agent_id:
+            await db.execute(
+                "INSERT OR IGNORE INTO group_members (group_id,user_id,role,joined_at) VALUES (?,?,?,?)",
+                (group_id, agent_id, "agent", ts)
+            )
         await db.commit()
         return {"id": group_id, "name": req.name}
     finally:
@@ -234,6 +230,7 @@ async def get_or_create_direct_group(friend_id: str, user=Depends(get_current_us
 async def get_group(group_id: str, user=Depends(get_current_user)):
     db = await get_db()
     try:
+        await require_group_member(db, group_id, user["user_id"])
         # 使用具名列名，避免 SELECT * 导致索引错位
         async with db.execute(
             "SELECT id, name, avatar, owner_id, description, announcement, mute_all FROM groups WHERE id=?",
@@ -289,6 +286,7 @@ async def update_group(group_id: str, req: UpdateGroupReq, user=Depends(get_curr
 async def group_members(group_id: str, user=Depends(get_current_user)):
     db = await get_db()
     try:
+        await require_group_member(db, group_id, user["user_id"])
         members = []
         async with db.execute("""
             SELECT gm.user_id, gm.role, gm.nickname, gm.muted_until,
@@ -322,21 +320,40 @@ async def group_members(group_id: str, user=Depends(get_current_user)):
 async def add_group_member(group_id: str, req: AddGroupMemberReq, user=Depends(get_current_user)):
     db = await get_db()
     try:
-        # 权限校验：只有群主/管理员可以邀请成员
-        async with db.execute(
-            "SELECT role FROM group_members WHERE group_id=? AND user_id=?",
-            (group_id, user["user_id"])
-        ) as c:
-            caller_row = await c.fetchone()
-            if not caller_row:
-                raise HTTPException(403, "你不是群成员")
-            if caller_row[0] not in ("owner", "admin"):
-                raise HTTPException(403, "只有群主或管理员可以邀请成员")
+        await require_group_admin(db, group_id, user["user_id"])
+        if req.role not in ("member", "admin", "agent"):
+            raise HTTPException(400, "成员角色无效")
+        if req.role == "agent":
+            async with db.execute("SELECT user_id FROM agents WHERE id=? AND enabled=1", (req.user_id,)) as c:
+                agent_row = await c.fetchone()
+            if not agent_row:
+                raise HTTPException(404, "数字人不存在")
+            if agent_row[0] != user["user_id"]:
+                raise HTTPException(403, "只能邀请自己管理的数字人")
+        else:
+            async with db.execute("SELECT 1 FROM users WHERE id=?", (req.user_id,)) as c:
+                if not await c.fetchone():
+                    raise HTTPException(404, "用户不存在")
+            if req.user_id != user["user_id"]:
+                async with db.execute(
+                    "SELECT 1 FROM friendships WHERE user_id=? AND friend_id=? AND status='accepted'",
+                    (user["user_id"], req.user_id),
+                ) as c:
+                    if not await c.fetchone():
+                        raise HTTPException(403, "只能邀请好友进群")
         await db.execute(
             "INSERT OR IGNORE INTO group_members (group_id,user_id,role,joined_at) VALUES (?,?,?,?)",
             (group_id, req.user_id, req.role, now())
         )
+        if req.role != "agent":
+            agent_id = await get_user_agent_id(db, req.user_id)
+            if agent_id:
+                await db.execute(
+                    "INSERT OR IGNORE INTO group_members (group_id,user_id,role,joined_at) VALUES (?,?,?,?)",
+                    (group_id, agent_id, "agent", now())
+                )
         await db.commit()
+        await ws_manager.join_group(req.user_id, group_id)
         return {"status": "ok"}
     finally:
         await db.close()
@@ -380,6 +397,7 @@ async def remove_group_member(group_id: str, user_id: str, user=Depends(get_curr
 async def get_messages(group_id: str, limit: int = 50, before: float = 0, user=Depends(get_current_user)):
     db = await get_db()
     try:
+        await require_group_member(db, group_id, user["user_id"])
         messages = []
         # 获取用户隐藏的消息ID集合
         hidden_ids = set()
@@ -453,6 +471,7 @@ async def send_message(req: SendMessageReq, user=Depends(get_current_user)):
     from ..main import agent_manager
     db = await get_db()
     try:
+        await require_group_member(db, req.group_id, user["user_id"])
         async with db.execute("SELECT nickname,avatar,avatar_url FROM users WHERE id=?", (user["user_id"],)) as c:
             row = await c.fetchone()
             nickname = row[0] if row else user["username"]
@@ -473,9 +492,9 @@ async def send_message(req: SendMessageReq, user=Depends(get_current_user)):
         # 获取回复内容
         reply_content = ""
         if req.reply_to:
-            async with db.execute("SELECT content,sender_name FROM messages WHERE id=?", (req.reply_to,)) as c:
+            async with db.execute("SELECT content,sender_name,group_id FROM messages WHERE id=?", (req.reply_to,)) as c:
                 r = await c.fetchone()
-                if r:
+                if r and r[2] == req.group_id:
                     reply_content = f"{r[1]}: {r[0][:50]}"
 
         await db.execute(
@@ -668,10 +687,12 @@ async def recall_message(req: RecallReq, user=Depends(get_current_user)):
 async def forward_message(req: ForwardReq, user=Depends(get_current_user)):
     db = await get_db()
     try:
-        async with db.execute("SELECT content,msg_type,media_url,sender_name FROM messages WHERE id=?", (req.message_id,)) as c:
+        async with db.execute("SELECT content,msg_type,media_url,sender_name,group_id FROM messages WHERE id=?", (req.message_id,)) as c:
             row = await c.fetchone()
             if not row:
                 raise HTTPException(404)
+        await require_group_member(db, row[4], user["user_id"])
+        await require_group_member(db, req.target_group_id, user["user_id"])
 
         async with db.execute("SELECT nickname FROM users WHERE id=?", (user["user_id"],)) as c:
             u = await c.fetchone()
@@ -728,6 +749,13 @@ async def pin_message(message_id: str, user=Depends(get_current_user)):
 async def unpin_message(message_id: str, user=Depends(get_current_user)):
     db = await get_db()
     try:
+        async with db.execute("SELECT group_id FROM messages WHERE id=?", (message_id,)) as c:
+            msg_row = await c.fetchone()
+            if not msg_row:
+                raise HTTPException(404, "消息不存在")
+        role = await require_group_member(db, msg_row[0], user["user_id"])
+        if role not in ("owner", "admin"):
+            raise HTTPException(403, "只有群主或管理员可以取消置顶")
         await db.execute("UPDATE messages SET pinned=0 WHERE id=?", (message_id,))
         await db.commit()
         return {"status": "ok"}
@@ -739,6 +767,7 @@ async def unpin_message(message_id: str, user=Depends(get_current_user)):
 async def get_pinned_messages(group_id: str, user=Depends(get_current_user)):
     db = await get_db()
     try:
+        await require_group_member(db, group_id, user["user_id"])
         msgs = []
         async with db.execute(
             "SELECT id,sender_name,content,created_at FROM messages WHERE group_id=? AND pinned=1 ORDER BY created_at DESC",
@@ -757,6 +786,11 @@ async def get_pinned_messages(group_id: str, user=Depends(get_current_user)):
 async def add_reaction(message_id: str, req: AddReactionReq, user=Depends(get_current_user)):
     db = await get_db()
     try:
+        async with db.execute("SELECT group_id FROM messages WHERE id=?", (message_id,)) as c:
+            msg_row = await c.fetchone()
+            if not msg_row:
+                raise HTTPException(404, "消息不存在")
+        await require_group_member(db, msg_row[0], user["user_id"])
         rid = gen_id()
         await db.execute(
             "INSERT OR IGNORE INTO message_reactions (id,message_id,user_id,emoji,created_at) VALUES (?,?,?,?,?)",
@@ -764,13 +798,10 @@ async def add_reaction(message_id: str, req: AddReactionReq, user=Depends(get_cu
         )
         await db.commit()
 
-        async with db.execute("SELECT group_id FROM messages WHERE id=?", (message_id,)) as c:
-            row = await c.fetchone()
-            if row:
-                await ws_manager.broadcast_to_group(row[0], {
-                    "type": "reaction",
-                    "data": {"message_id": message_id, "user_id": user["user_id"], "emoji": req.emoji, "action": "add"}
-                })
+        await ws_manager.broadcast_to_group(msg_row[0], {
+            "type": "reaction",
+            "data": {"message_id": message_id, "user_id": user["user_id"], "emoji": req.emoji, "action": "add"}
+        })
         return {"status": "ok"}
     finally:
         await db.close()
@@ -780,6 +811,11 @@ async def add_reaction(message_id: str, req: AddReactionReq, user=Depends(get_cu
 async def remove_reaction(message_id: str, emoji: str, user=Depends(get_current_user)):
     db = await get_db()
     try:
+        async with db.execute("SELECT group_id FROM messages WHERE id=?", (message_id,)) as c:
+            msg_row = await c.fetchone()
+            if not msg_row:
+                raise HTTPException(404, "消息不存在")
+        await require_group_member(db, msg_row[0], user["user_id"])
         await db.execute(
             "DELETE FROM message_reactions WHERE message_id=? AND user_id=? AND emoji=?",
             (message_id, user["user_id"], emoji)
@@ -1094,6 +1130,8 @@ async def create_red_envelope(req: RedEnvelopeReq, user=Depends(get_current_user
         raise HTTPException(400, "红包个数 1-100")
     db = await get_db()
     try:
+        if req.group_id:
+            await require_group_member(db, req.group_id, user["user_id"])
         eid = gen_id()
         await db.execute(
             """INSERT INTO red_envelopes (id,sender_id,group_id,receiver_id,amount,count,greeting,status,remaining,remaining_count,created_at)
@@ -1134,6 +1172,7 @@ async def create_red_envelope(req: RedEnvelopeReq, user=Depends(get_current_user
                 "extra": extra, "created_at": ts, "reactions": [],
             }
             await ws_manager.broadcast_to_group(req.group_id, {"type": "message", "data": message_data})
+            asyncio.create_task(MessageDelivery.on_message_sent(msg_id, req.group_id, user["user_id"]))
 
         return {"id": eid, "message": message_data}
     finally:
@@ -1148,6 +1187,8 @@ async def claim_red_envelope(eid: str, user=Depends(get_current_user)):
             env = await c.fetchone()
             if not env:
                 raise HTTPException(404, "红包不存在")
+            if env[2]:
+                await require_group_member(db, env[2], user["user_id"])
             if env[7] != "pending":
                 raise HTTPException(400, "红包已领完")
             if env[1] == user["user_id"]:
@@ -1198,6 +1239,8 @@ async def get_red_envelope(eid: str, user=Depends(get_current_user)):
             env = await c.fetchone()
             if not env:
                 raise HTTPException(404)
+            if env[2]:
+                await require_group_member(db, env[2], user["user_id"])
 
         claims = []
         async with db.execute("""
@@ -1444,11 +1487,13 @@ async def delete_message(message_id: str, user=Depends(get_current_user)):
     try:
         # 验证消息存在
         async with db.execute(
-            "SELECT id FROM messages WHERE id=?",
+            "SELECT group_id FROM messages WHERE id=?",
             (message_id,)
         ) as c:
-            if not await c.fetchone():
+            msg_row = await c.fetchone()
+            if not msg_row:
                 raise HTTPException(404, "消息不存在")
+        await require_group_member(db, msg_row[0], user["user_id"])
 
         # 记录隐藏关系（幂等，忽略重复）
         await db.execute(
@@ -1549,17 +1594,14 @@ async def join_by_code(code: str, user=Depends(get_current_user)):
             (group_id, user["user_id"], "member", ts)
         )
         # 同时加入用户的 Agent
-        async with db.execute(
-            "SELECT agent_id FROM users WHERE id=?",
-            (user["user_id"],)
-        ) as c:
-            agent_row = await c.fetchone()
-            if agent_row and agent_row[0]:
-                await db.execute(
-                    "INSERT OR IGNORE INTO group_members (group_id,user_id,role,joined_at) VALUES (?,?,?,?)",
-                    (group_id, agent_row[0], "agent", ts)
-                )
+        agent_id = await get_user_agent_id(db, user["user_id"])
+        if agent_id:
+            await db.execute(
+                "INSERT OR IGNORE INTO group_members (group_id,user_id,role,joined_at) VALUES (?,?,?,?)",
+                (group_id, agent_id, "agent", ts)
+            )
         await db.commit()
+        await ws_manager.join_group(user["user_id"], group_id)
 
         # 广播加入消息
         async with db.execute(

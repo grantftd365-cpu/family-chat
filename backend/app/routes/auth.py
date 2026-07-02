@@ -6,6 +6,7 @@ from loguru import logger
 
 from ..core.auth import hash_password, verify_password, create_token, get_current_user
 from ..models.database import get_db, gen_id, now
+from ..services.family import detach_legacy_global_family, ensure_user_family_group
 
 router = APIRouter(prefix="/api")
 
@@ -64,15 +65,7 @@ async def register(req: RegisterReq):
         await agent_manager.create_agent(agent_config, _db=db)
         await db.execute("UPDATE users SET agent_id=? WHERE id=?", (agent_id, user_id))
 
-        # 加入默认群
-        await db.execute(
-            "INSERT OR IGNORE INTO group_members (group_id,user_id,role,joined_at) VALUES (?,?,?,?)",
-            ("family_default", user_id, "member", ts)
-        )
-        await db.execute(
-            "INSERT OR IGNORE INTO group_members (group_id,user_id,role,joined_at) VALUES (?,?,?,?)",
-            ("family_default", agent_id, "agent", ts)
-        )
+        await ensure_user_family_group(db, user_id, agent_id)
         await db.commit()
 
         token = create_token(user_id, req.email)
@@ -98,6 +91,8 @@ async def login(req: LoginReq):
                 raise HTTPException(401, "邮箱或密码错误")
 
         # 更新在线状态
+        await ensure_user_family_group(db, row[0], row[4] or "")
+        await detach_legacy_global_family(db, row[0], row[4] or "")
         await db.execute("UPDATE users SET online_status='online', last_seen=? WHERE id=?", (now(), row[0]))
         await db.commit()
 
@@ -365,15 +360,7 @@ async def wx_login(req: WxLoginReq):
         await agent_manager.create_agent(agent_config, _db=db)
         await db.execute("UPDATE users SET agent_id=? WHERE id=?", (agent_id, user_id))
 
-        # 加入默认群
-        await db.execute(
-            "INSERT OR IGNORE INTO group_members (group_id,user_id,role,joined_at) VALUES (?,?,?,?)",
-            ("family_default", user_id, "member", ts)
-        )
-        await db.execute(
-            "INSERT OR IGNORE INTO group_members (group_id,user_id,role,joined_at) VALUES (?,?,?,?)",
-            ("family_default", agent_id, "agent", ts)
-        )
+        await ensure_user_family_group(db, user_id, agent_id)
         await db.commit()
         await _refine_wechat_profile(agent_id, wx_profile)
 
@@ -543,6 +530,8 @@ async def wx_oauth_login(req: WxOAuthLoginReq):
                 "UPDATE users SET online_status='online', last_seen=? WHERE id=?",
                 (now(), user_id)
             )
+            await ensure_user_family_group(db, user_id, row[4] or "")
+            await detach_legacy_global_family(db, user_id, row[4] or "")
             await db.commit()
 
             # 异步炼化微信资料到数字人
@@ -594,15 +583,7 @@ async def wx_oauth_login(req: WxOAuthLoginReq):
         await agent_manager.create_agent(agent_config, _db=db)
         await db.execute("UPDATE users SET agent_id=? WHERE id=?", (agent_id, user_id))
 
-        # 加入默认群
-        await db.execute(
-            "INSERT OR IGNORE INTO group_members (group_id,user_id,role,joined_at) VALUES (?,?,?,?)",
-            ("family_default", user_id, "member", ts)
-        )
-        await db.execute(
-            "INSERT OR IGNORE INTO group_members (group_id,user_id,role,joined_at) VALUES (?,?,?,?)",
-            ("family_default", agent_id, "agent", ts)
-        )
+        await ensure_user_family_group(db, user_id, agent_id)
         await db.commit()
 
         # 异步炼化微信资料到数字人

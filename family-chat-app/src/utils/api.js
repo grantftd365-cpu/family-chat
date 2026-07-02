@@ -258,6 +258,22 @@ export function getGroupMembers(groupId) {
   return get(`/api/groups/${groupId}/members`)
 }
 
+export function addGroupMember(groupId, userId, role = 'member') {
+  return post(`/api/groups/${groupId}/members`, { user_id: userId, role })
+}
+
+export function generateFamilyInviteCode(groupId) {
+  return post(`/api/groups/${groupId}/invite-code`)
+}
+
+export function joinFamilyByCode(code) {
+  return post(`/api/family/join?code=${encodeURIComponent(code)}`)
+}
+
+export function checkFamilyInviteCode(code) {
+  return get('/api/family/check-code', { code })
+}
+
 /* ========== 消息相关 ========== */
 
 /** 获取消息列表 */
@@ -383,8 +399,8 @@ export function getUserOnline(userId) {
 /* ========== 数字人相关 ========== */
 
 /** 获取数字人列表 */
-export function getAgents() {
-  return get('/api/agents')
+export function getAgents(params = {}) {
+  return get('/api/agents', params)
 }
 
 /** 获取单个数字人 */
@@ -749,6 +765,10 @@ export default {
   getOrCreateDirectGroup,
   createGroup,
   getGroupMembers,
+  addGroupMember,
+  generateFamilyInviteCode,
+  joinFamilyByCode,
+  checkFamilyInviteCode,
   getMessages,
   sendMessage,
   recallMessage,

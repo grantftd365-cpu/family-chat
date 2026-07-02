@@ -425,6 +425,12 @@
           </view>
           <text class="group-info-close" @tap="showGroupInfo = false">✕</text>
         </view>
+        <view class="group-info-actions">
+          <view class="group-info-action" @tap="handleInviteCode">
+            <text class="group-info-action-icon">🔑</text>
+            <text>{{ inviteCode ? `邀请码 ${inviteCode}` : '生成家庭邀请码' }}</text>
+          </view>
+        </view>
         <scroll-view scroll-y class="group-member-list">
           <view
             v-for="member in groupMembers"
@@ -495,6 +501,7 @@ const MAX_RENDERED_MESSAGES = 160
 const reactingMsgId = ref(null) // 防并发锁
 const groupMembers = ref([])
 const mentionAgents = ref([])
+const inviteCode = ref('')
 
 // 快速表情回应
 const quickReactMsgId = ref(null)
@@ -644,7 +651,7 @@ async function loadGroupMembers() {
   try {
     const [membersRes, agentsRes] = await Promise.all([
       api.getGroupMembers(groupId.value).catch(() => []),
-      api.getAgents().catch(() => []),
+      api.getAgents({ group_id: groupId.value }).catch(() => []),
     ])
     groupMembers.value = Array.isArray(membersRes) ? membersRes : (membersRes.members || [])
     mentionAgents.value = Array.isArray(agentsRes) ? agentsRes : []
@@ -838,6 +845,26 @@ function insertMention(member) {
     inputText.value += ` ${mentionText}`
   }
   showMentionPanel.value = false
+}
+
+async function handleInviteCode() {
+  if (!groupId.value) return
+  uni.showLoading({ title: inviteCode.value ? '复制中...' : '生成中...' })
+  try {
+    if (!inviteCode.value) {
+      const res = await api.generateFamilyInviteCode(groupId.value)
+      inviteCode.value = res?.code || ''
+    }
+    uni.hideLoading()
+    if (!inviteCode.value) throw new Error('邀请码生成失败')
+    uni.setClipboardData({
+      data: inviteCode.value,
+      success: () => uni.showToast({ title: '邀请码已复制', icon: 'success' })
+    })
+  } catch (e) {
+    uni.hideLoading()
+    uni.showToast({ title: e.message || '生成失败', icon: 'none' })
+  }
 }
 
 // 选择表情
@@ -2411,6 +2438,32 @@ function reEditMessage(msg) {
   justify-content: space-between;
   padding: 28rpx 32rpx;
   border-bottom: 1rpx solid var(--border-color);
+}
+
+.group-info-actions {
+  padding: 20rpx 32rpx;
+  border-bottom: 1rpx solid var(--border-color);
+}
+
+.group-info-action {
+  height: 76rpx;
+  border-radius: 18rpx;
+  background: rgba(7, 193, 96, 0.1);
+  color: $primary-color;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12rpx;
+  font-size: $font-sm;
+  font-weight: 700;
+
+  &:active {
+    opacity: 0.8;
+  }
+}
+
+.group-info-action-icon {
+  font-size: 30rpx;
 }
 
 .group-info-title {

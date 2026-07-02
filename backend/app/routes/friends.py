@@ -54,6 +54,9 @@ async def send_friend_request(req: FriendRequestReq, user=Depends(get_current_us
     db = await get_db()
     try:
         # 检查是否已是好友
+        async with db.execute("SELECT 1 FROM users WHERE id=? AND status='active'", (req.to_user_id,)) as c:
+            if not await c.fetchone():
+                raise HTTPException(404, "用户不存在")
         async with db.execute(
             "SELECT status FROM friendships WHERE user_id=? AND friend_id=?",
             (user["user_id"], req.to_user_id)
@@ -63,11 +66,13 @@ async def send_friend_request(req: FriendRequestReq, user=Depends(get_current_us
 
         # 检查是否有待处理请求
         async with db.execute(
-            "SELECT id FROM friend_requests WHERE from_user_id=? AND to_user_id=? AND status='pending'",
-            (user["user_id"], req.to_user_id)
+            """SELECT id FROM friend_requests
+               WHERE status='pending'
+                 AND ((from_user_id=? AND to_user_id=?) OR (from_user_id=? AND to_user_id=?))""",
+            (user["user_id"], req.to_user_id, req.to_user_id, user["user_id"])
         ) as c:
             if await c.fetchone():
-                raise HTTPException(400, "已发送过请求")
+                raise HTTPException(400, "已有待处理好友请求")
 
         rid = gen_id()
         await db.execute(
@@ -117,6 +122,8 @@ async def handle_friend_request(req: HandleRequestReq, user=Depends(get_current_
                 raise HTTPException(404, "请求不存在")
 
         from_id, to_id = row[0], row[1]
+        if req.action not in ("accept", "reject"):
+            raise HTTPException(400, "操作无效")
         status = "accepted" if req.action == "accept" else "rejected"
         await db.execute("UPDATE friend_requests SET status=? WHERE id=?", (status, req.request_id))
 

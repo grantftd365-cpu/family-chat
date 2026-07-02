@@ -243,14 +243,6 @@ app.include_router(refinement_router)
 
 async def ensure_defaults(db, agent_mgr: AgentManager):
     """确保默认数据存在"""
-    async with db.execute("SELECT id FROM groups WHERE id='family_default'") as cursor:
-        if not await cursor.fetchone():
-            await db.execute(
-                "INSERT INTO groups (id,name,owner_id,description,created_at,updated_at) VALUES (?,?,?,?,?,?)",
-                ("family_default", "我们的家庭", "system", "家庭聊天群", now(), now())
-            )
-            await db.commit()
-
     if not agent_mgr.agents:
         default_agents = [
             {
@@ -292,11 +284,6 @@ async def ensure_defaults(db, agent_mgr: AgentManager):
         ]
         for cfg in default_agents:
             await agent_mgr.create_agent(cfg, _db=db)
-        for cfg in default_agents:
-            await db.execute(
-                "INSERT OR IGNORE INTO group_members (group_id,user_id,role,joined_at) VALUES (?,?,?,?)",
-                ("family_default", cfg["id"], "agent", now())
-            )
         await db.commit()
 
 

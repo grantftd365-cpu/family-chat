@@ -6,6 +6,7 @@ from loguru import logger
 from ..core.auth import get_ws_user
 from ..core.websocket import ws_manager
 from ..models.database import get_db, now
+from ..services.family import get_group_member_role
 from ..services.delivery import MessageDelivery, ReactionManager
 from ..services.calling import handle_call_signaling
 
@@ -63,10 +64,21 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query("")):
                 msg = json.loads(data)
                 msg_type = msg.get("type", "")
 
+                async def can_use_group(group_id: str) -> bool:
+                    if not group_id:
+                        return False
+                    db_check = await get_db()
+                    try:
+                        return bool(await get_group_member_role(db_check, group_id, user_id))
+                    finally:
+                        await db_check.close()
+
                 if msg_type == "ping":
                     await websocket.send_json({"type": "pong"})
 
                 elif msg_type == "typing":
+                    if not await can_use_group(msg.get("group_id", "")):
+                        continue
                     await ws_manager.broadcast_to_group(
                         msg.get("group_id", ""),
                         {"type": "typing", "data": {"user_id": user_id, "user_name": msg.get("name", "")}},
@@ -83,7 +95,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query("")):
                     # 客户端标记消息已读
                     group_id = msg.get("group_id", "")
                     before = msg.get("before", 0)
-                    if group_id:
+                    if group_id and await can_use_group(group_id):
                         await MessageDelivery.mark_batch_read(group_id, user_id, before)
                         # 广播已读状态
                         await ws_manager.broadcast_to_group(group_id, {
@@ -108,7 +120,15 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query("")):
                     action = msg.get("action", "add")  # add / remove
                     group_id = msg.get("group_id", "")
 
-                    if message_id and emoji:
+                    if message_id and emoji and await can_use_group(group_id):
+                        db_msg = await get_db()
+                        try:
+                            async with db_msg.execute("SELECT group_id FROM messages WHERE id=?", (message_id,)) as mc:
+                                msg_row = await mc.fetchone()
+                            if not msg_row or msg_row[0] != group_id:
+                                continue
+                        finally:
+                            await db_msg.close()
                         async with (await get_db()) as db2:
                             async with db2.execute("SELECT nickname FROM users WHERE id=?", (user_id,)) as c:
                                 row = await c.fetchone()

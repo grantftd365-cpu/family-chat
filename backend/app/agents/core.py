@@ -1403,6 +1403,29 @@ class AgentManager:
             await db.close()
         return members[:50]
 
+    async def get_group_agent_ids(self, group_id: str) -> set[str]:
+        """只返回当前群里的启用数字人，防止不同家庭的 Agent 串群。"""
+        if not group_id:
+            return set(self.agents.keys())
+        agent_ids: set[str] = set()
+        db = await self._get_db()
+        try:
+            async with db.execute(
+                """SELECT gm.user_id
+                   FROM group_members gm
+                   JOIN agents a ON gm.user_id=a.id
+                   WHERE gm.group_id=? AND a.enabled=1""",
+                (group_id,),
+            ) as cursor:
+                async for row in cursor:
+                    if row[0] in self.agents:
+                        agent_ids.add(row[0])
+        except Exception as e:
+            logger.debug(f"群数字人读取跳过: {e}")
+        finally:
+            await db.close()
+        return agent_ids
+
     async def load_agents(self):
         """从数据库加载所有 Agent"""
         db = self.db
@@ -1621,8 +1644,17 @@ class AgentManager:
         sender_is_agent = sender_id in self.agents
         session_id = f"group:{group_id}" if group_id else "global"
         group_members = await self.get_group_member_snapshot(group_id)
+        group_agent_ids = await self.get_group_agent_ids(group_id)
+        if sender_is_agent:
+            group_agent_ids.add(sender_id)
+        if has_explicit_mentions:
+            mentioned_ids &= group_agent_ids
+            if not mentioned_ids:
+                return replies
 
         for observer_id, observer in self.agents.items():
+            if observer_id not in group_agent_ids:
+                continue
             if observer_id == sender_id:
                 continue
             await observer.observe(
@@ -1640,6 +1672,8 @@ class AgentManager:
         random.shuffle(agent_items)
 
         for agent_id, agent in agent_items:
+            if agent_id not in group_agent_ids:
+                continue
             if agent_id == sender_id:
                 continue
             is_mentioned = agent_id in mentioned_ids

@@ -33,6 +33,11 @@
         <text class="func-label">我的群聊</text>
         <text class="func-arrow">›</text>
       </view>
+      <view class="func-item" @tap="showJoinFamily = true">
+        <view class="func-icon">🔑</view>
+        <text class="func-label">加入家庭群</text>
+        <text class="func-arrow">›</text>
+      </view>
       <view class="func-item" @tap="goAgents">
         <view class="func-icon">🤖</view>
         <text class="func-label">数字人</text>
@@ -135,6 +140,30 @@
         </scroll-view>
       </view>
     </view>
+
+    <!-- 加入家庭群弹窗 -->
+    <view v-if="showJoinFamily" class="modal-mask" @tap="showJoinFamily = false">
+      <view class="modal-content" @tap.stop>
+        <text class="modal-title">加入家庭群</text>
+        <text class="modal-desc">输入家人分享的邀请码，加入后你的数字人也会进入这个家庭群。</text>
+        <view class="modal-input-wrap">
+          <input
+            v-model="familyCode"
+            placeholder="请输入 6 位邀请码"
+            class="modal-input code-input"
+            :maxlength="12"
+          />
+        </view>
+        <view class="modal-btns">
+          <view class="modal-btn cancel" @tap="showJoinFamily = false">
+            <text>取消</text>
+          </view>
+          <view class="modal-btn confirm" @tap="handleJoinFamily">
+            <text>加入</text>
+          </view>
+        </view>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -157,7 +186,9 @@ const friends = ref([])
 const friendRequests = ref([])
 const showAddFriend = ref(false)
 const showRequests = ref(false)
+const showJoinFamily = ref(false)
 const searchKeyword = ref('')
+const familyCode = ref('')
 
 // 按首字母分组
 const groupedFriends = computed(() => {
@@ -261,6 +292,29 @@ async function handleFriendRequest(req, action) {
     await loadData()
   } catch (e) {
     uni.showToast({ title: e.message || '处理失败', icon: 'none' })
+  }
+}
+
+async function handleJoinFamily() {
+  const code = familyCode.value.trim().toUpperCase()
+  if (!code) {
+    uni.showToast({ title: '请输入邀请码', icon: 'none' })
+    return
+  }
+  uni.showLoading({ title: '正在加入...' })
+  try {
+    const res = await api.joinFamilyByCode(code)
+    uni.hideLoading()
+    showJoinFamily.value = false
+    familyCode.value = ''
+    await chatStore.loadGroups()
+    uni.showToast({ title: res?.already_joined ? '已在群内' : '加入成功', icon: 'success' })
+    uni.navigateTo({
+      url: `/pages/chat/chat?groupId=${res.group_id}&name=${encodeURIComponent(res.group_name || '家庭群')}`
+    })
+  } catch (e) {
+    uni.hideLoading()
+    uni.showToast({ title: e.message || '加入失败', icon: 'none' })
   }
 }
 
@@ -493,6 +547,15 @@ function getPinyinInitial(char) {
   margin-bottom: 40rpx;
 }
 
+.modal-desc {
+  display: block;
+  margin: -20rpx 0 28rpx;
+  color: var(--text-secondary);
+  font-size: $font-sm;
+  line-height: 1.5;
+  text-align: center;
+}
+
 .modal-input-wrap {
   margin-bottom: 24rpx;
 }
@@ -504,6 +567,12 @@ function getPinyinInitial(char) {
   padding: 0 24rpx;
   font-size: $font-base;
   color: var(--text-primary);
+}
+
+.code-input {
+  text-align: center;
+  letter-spacing: 8rpx;
+  font-weight: 700;
 }
 
 .modal-btns {

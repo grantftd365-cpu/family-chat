@@ -9,6 +9,12 @@ from loguru import logger
 
 from ..core.auth import get_current_user
 from ..models.database import get_db, gen_id, now
+from ..services.family import (
+    ensure_user_family_group,
+    get_user_agent_id,
+    user_can_access_agent,
+    user_owns_agent,
+)
 
 router = APIRouter(prefix="/api/agents")
 
@@ -51,9 +57,39 @@ class RefineVoiceReq(BaseModel):
 
 
 @router.get("")
-async def list_agents(user=Depends(get_current_user)):
+async def list_agents(group_id: str = Query(""), user=Depends(get_current_user)):
     from ..main import agent_manager
-    return agent_manager.get_all()
+    db = await get_db()
+    try:
+        if group_id:
+            async with db.execute(
+                "SELECT 1 FROM group_members WHERE group_id=? AND user_id=?",
+                (group_id, user["user_id"]),
+            ) as cursor:
+                if not await cursor.fetchone():
+                    raise HTTPException(403, "你不是该群成员")
+            visible_ids = set()
+            async with db.execute(
+                """SELECT a.id
+                   FROM agents a
+                   JOIN group_members gm ON gm.user_id=a.id
+                   WHERE gm.group_id=? AND a.enabled=1""",
+                (group_id,),
+            ) as cursor:
+                async for row in cursor:
+                    visible_ids.add(row[0])
+            return [agent for agent in agent_manager.get_all() if agent["id"] in visible_ids]
+
+        visible_ids = set()
+        async with db.execute(
+            "SELECT id FROM agents WHERE enabled=1 AND user_id=?",
+            (user["user_id"],),
+        ) as cursor:
+            async for row in cursor:
+                visible_ids.add(row[0])
+        return [agent for agent in agent_manager.get_all() if agent["id"] in visible_ids]
+    finally:
+        await db.close()
 
 
 @router.get("/{agent_id}")
@@ -65,10 +101,14 @@ async def get_agent(agent_id: str, user=Depends(get_current_user)):
     proactive_config = {}
     db = await get_db()
     try:
+        if not await user_can_access_agent(db, user["user_id"], agent_id):
+            raise HTTPException(403, "无权访问该数字人")
         async with db.execute("SELECT proactive_config FROM agents WHERE id=?", (agent_id,)) as c:
             row = await c.fetchone()
             if row and row[0]:
                 proactive_config = json.loads(row[0] or "{}")
+    except HTTPException:
+        raise
     except Exception:
         proactive_config = {}
     finally:
@@ -95,10 +135,14 @@ async def create_agent(req: CreateAgentReq, user=Depends(get_current_user)):
     from ..main import agent_manager
     db = await get_db()
     try:
-        agent_id = await agent_manager.create_agent(req.dict())
+        config = req.dict()
+        config["user_id"] = user["user_id"]
+        agent_id = await agent_manager.create_agent(config, _db=db)
+        user_agent_id = await get_user_agent_id(db, user["user_id"])
+        await ensure_user_family_group(db, user["user_id"], user_agent_id)
         await db.execute(
             "INSERT OR IGNORE INTO group_members (group_id,user_id,role,joined_at) VALUES (?,?,?,?)",
-            ("family_default", agent_id, "agent", now())
+            (f"family_{user['user_id']}", agent_id, "agent", now())
         )
         await db.commit()
         return {"id": agent_id, "name": req.name}
@@ -112,6 +156,12 @@ async def update_agent(agent_id: str, req: UpdateAgentReq, user=Depends(get_curr
     agent = agent_manager.get_agent(agent_id)
     if not agent:
         raise HTTPException(404)
+    db = await get_db()
+    try:
+        if not await user_owns_agent(db, user["user_id"], agent_id):
+            raise HTTPException(403, "只能修改自己管理的数字人")
+    finally:
+        await db.close()
 
     p = agent.personality
     if req.name is not None:
@@ -172,6 +222,12 @@ async def update_agent(agent_id: str, req: UpdateAgentReq, user=Depends(get_curr
 @router.delete("/{agent_id}")
 async def delete_agent(agent_id: str, user=Depends(get_current_user)):
     from ..main import agent_manager, voice_profile_manager
+    db = await get_db()
+    try:
+        if not await user_owns_agent(db, user["user_id"], agent_id):
+            raise HTTPException(403, "只能删除自己管理的数字人")
+    finally:
+        await db.close()
     ok = await agent_manager.delete_agent(agent_id)
     if not ok:
         raise HTTPException(404, "Agent 不存在")
@@ -184,6 +240,8 @@ async def delete_agent(agent_id: str, user=Depends(get_current_user)):
 async def agent_memories(agent_id: str, user=Depends(get_current_user)):
     db = await get_db()
     try:
+        if not await user_owns_agent(db, user["user_id"], agent_id):
+            raise HTTPException(403, "只能查看自己管理的数字人记忆")
         memories = []
         async with db.execute(
             "SELECT id,content,importance,memory_type,category,created_at FROM agent_memories WHERE agent_id=? ORDER BY created_at DESC LIMIT 50",
@@ -204,6 +262,8 @@ async def agent_relationships(agent_id: str, group_id: str = Query(""),
                               user=Depends(get_current_user)):
     db = await get_db()
     try:
+        if not await user_owns_agent(db, user["user_id"], agent_id):
+            raise HTTPException(403, "只能查看自己管理的数字人关系")
         sql = """SELECT id, person_id, group_id, person_name, person_type,
                         familiarity, affinity, trust, tension, message_count,
                         mention_count, last_interaction_at, profile_json, updated_at
@@ -285,6 +345,12 @@ async def refine_text(req: RefineTextReq, user=Depends(get_current_user)):
     agent = agent_manager.get_agent(req.agent_id)
     if not agent:
         raise HTTPException(404)
+    db_perm = await get_db()
+    try:
+        if not await user_owns_agent(db_perm, user["user_id"], req.agent_id):
+            raise HTTPException(403, "只能炼化自己管理的数字人")
+    finally:
+        await db_perm.close()
 
     prompt = f"""分析以下文本，提取说话人的性格特征、说话风格、兴趣爱好、口头禅。
 
@@ -345,6 +411,8 @@ async def refine_text(req: RefineTextReq, user=Depends(get_current_user)):
     except json.JSONDecodeError:
         await agent.memory.add_long_term(f"[炼化分析] {result[:1000]}", importance=0.8)
         return {"status": "ok", "message": "数据已记录", "raw": result[:500]}
+    except HTTPException:
+        raise
     except ValueError as e:
         # LLM not configured — do basic keyword extraction
         traits_data = {"traits": [], "speaking_style": "", "interests": [], "catchphrases": []}
@@ -377,6 +445,12 @@ async def refine_chat(req: RefineTextReq, user=Depends(get_current_user)):
     agent = agent_manager.get_agent(req.agent_id)
     if not agent:
         raise HTTPException(404)
+    db_perm = await get_db()
+    try:
+        if not await user_owns_agent(db_perm, user["user_id"], req.agent_id):
+            raise HTTPException(403, "只能炼化自己管理的数字人")
+    finally:
+        await db_perm.close()
 
     text = req.text
     chunks = [text[i:i+2000] for i in range(0, len(text), 2000)]
